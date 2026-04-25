@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SoalAI Generator — Generator Soal Ujian Otomatis</title>
+  <script src="https://cdn.jsdelivr.net/npm/mammoth@1.7.0/mammoth.browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+  <style>
+    :root {
+      --primary: #1a73e8;
+      --primary-dark: #1557b0;
+      --green: #34a853;
+      --yellow: #f9ab00;
+      --red: #ea4335;
+      --bg: #f0f4f8;
+      --surface: #ffffff;
+      --border: #dadce0;
+      --text: #202124;
+      --text-2: #5f6368;
+      --shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+      color: #fff; padding: 16px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .header h1 { font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    .badge { font-size: 0.7rem; background: rgba(255,255,255,0.25); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+    .btn-settings { background: rgba(255,255,255,0.15); color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-family: inherit; transition: background 0.2s; }
+    .btn-settings:hover { background: rgba(255,255,255,0.25); }
+
+    /* ── Layout ── */
+    .container { max-width: 860px; margin: 0 auto; padding: 24px 16px 60px; }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border-radius: 14px; padding: 22px 24px; margin-bottom: 18px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+    .card-title { font-size: 0.95rem; font-weight: 700; color: var(--primary); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 14px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-2); margin-bottom: 5px; letter-spacing: 0.3px; text-transform: uppercase; }
+    input[type=text], input[type=password], select, textarea {
+      width: 100%; padding: 10px 13px; border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 0.9rem; font-family: inherit; color: var(--text); background: #fff;
+      transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,115,232,0.12); }
+    textarea { resize: vertical; line-height: 1.5; }
+    .hint { font-size: 0.76rem; color: var(--text-2); margin-top: 4px; }
+
+    /* ── File Upload ── */
+    .file-upload {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 22px 16px;
+      text-align: center; cursor: pointer; transition: all 0.2s; position: relative; background: #fafbfc;
+    }
+    .file-upload:hover { border-color: var(--primary); background: rgba(26,115,232,0.03); }
+    .file-upload.has-file { border-color: var(--green); background: rgba(52,168,83,0.04); border-style: solid; }
+    .file-upload input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .file-upload .up-icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .file-upload .up-text { font-size: 0.85rem; color: var(--text-2); }
+    .file-upload .up-name { margin-top: 6px; font-size: 0.85rem; color: var(--green); font-weight: 600; }
+
+    /* ── Jenis Soal Toggle ── */
+    .toggle-group { display: flex; gap: 8px; }
+    .toggle-opt {
+      flex: 1; padding: 10px 8px; border: 1.5px solid var(--border); border-radius: 9px;
+      text-align: center; cursor: pointer; font-size: 0.82rem; font-weight: 500; transition: all 0.2s; color: var(--text-2);
+    }
+    .toggle-opt.active { border-color: var(--primary); background: rgba(26,115,232,0.08); color: var(--primary); font-weight: 700; }
+    .toggle-opt:hover:not(.active) { border-color: #aaa; color: var(--text); }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; border-radius: 8px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: inherit; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-ghost { background: #f1f3f4; color: var(--text); }
+    .btn-ghost:hover { background: #e8eaed; }
+    .btn-generate {
+      width: 100%; padding: 17px; font-size: 1.05rem; font-weight: 700;
+      background: linear-gradient(135deg, #1a73e8, #0d47a1);
+      color: #fff; border-radius: 12px; justify-content: center; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(26,115,232,0.35); border: none; font-family: inherit;
+      transition: all 0.2s;
+    }
+    .btn-generate:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(26,115,232,0.45); }
+    .btn-generate:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+    .btn-dl { background: var(--green); color: #fff; width: 100%; justify-content: center; padding: 11px; }
+    .btn-dl:hover:not(:disabled) { background: #2d9248; }
+    .btn-dl:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── Alert ── */
+    .alert { padding: 12px 15px; border-radius: 9px; font-size: 0.88rem; margin-bottom: 14px; line-height: 1.5; }
+    .alert-error { background: rgba(234,67,53,0.08); color: #c62828; border: 1px solid rgba(234,67,53,0.25); }
+    .alert-success { background: rgba(52,168,83,0.08); color: #1b5e20; border: 1px solid rgba(52,168,83,0.25); }
+    .alert-info { background: rgba(26,115,232,0.08); color: #0d47a1; border: 1px solid rgba(26,115,232,0.2); }
+
+    /* ── Progress ── */
+    .prog-wrap { display: none; }
+    .prog-wrap.show { display: block; }
+    .step-row { display: flex; align-items: flex-start; gap: 12px; padding: 11px 0; border-bottom: 1px solid #f1f3f4; }
+    .step-row:last-child { border-bottom: none; }
+    .step-icon { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.95rem; flex-shrink: 0; }
+    .step-icon.pending { background: #f1f3f4; color: #aaa; }
+    .step-icon.running { background: rgba(26,115,232,0.12); color: var(--primary); animation: blink 1.2s ease-in-out infinite; }
+    .step-icon.done { background: rgba(52,168,83,0.12); color: var(--green); }
+    .step-icon.err { background: rgba(234,67,53,0.1); color: var(--red); }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .step-info { flex: 1; }
+    .step-label { font-size: 0.88rem; font-weight: 600; }
+    .step-detail { font-size: 0.78rem; color: var(--text-2); margin-top: 2px; }
+
+    /* ── Results ── */
+    .results-wrap { display: none; }
+    .results-wrap.show { display: block; }
+    .dl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .dl-card { border: 1.5px solid var(--border); border-radius: 11px; padding: 18px 14px; text-align: center; }
+    .dl-icon { font-size: 2.2rem; margin-bottom: 8px; }
+    .dl-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 3px; }
+    .dl-desc { font-size: 0.78rem; color: var(--text-2); margin-bottom: 12px; }
+
+    /* ── Distribution ── */
+    .dist-bar { display: flex; border-radius: 6px; overflow: hidden; height: 22px; margin-top: 8px; }
+    .dist-seg { display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; color: #fff; transition: width 0.5s; min-width: 18px; }
+    .dist-legend { display: flex; gap: 14px; margin-top: 6px; font-size: 0.78rem; color: var(--text-2); }
+
+    /* ── Log ── */
+    .log-box { background: #1e1e1e; color: #ccc; border-radius: 8px; padding: 14px; font-family: 'Courier New', monospace; font-size: 0.76rem; max-height: 180px; overflow-y: auto; margin-top: 10px; display: none; }
+    .log-box.show { display: block; }
+    .log-line { padding: 1px 0; }
+    .log-ok { color: #4ec9b0; }
+    .log-warn { color: #dcdcaa; }
+    .log-err { color: #f48771; }
+    .log-info { color: #9cdcfe; }
+
+    /* ── Responsive ── */
+    @media (max-width: 580px) {
+      .form-row { grid-template-columns: 1fr; }
+      .dl-grid { grid-template-columns: 1fr; }
+      .header h1 { font-size: 1rem; }
+    }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid var(--border); margin: 6px 0 14px; }
+
+    /* ── New school mini-form ── */
+    .mini-form { background: #f8f9fa; border-radius: 10px; padding: 16px; margin-top: 10px; border: 1px solid var(--border); }
+    .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 500; color: var(--text); cursor: pointer; }
+    .checkbox-label input { width: auto; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════ HEADER -->
+<div class="header">
+  <h1>📚 SoalAI Generator <span class="badge">v1.0</span></h1>
+  <button class="btn-settings" onclick="toggleSettings()">⚙️ Pengaturan API</button>
+</div>
+
+<div class="container">
+
+  <!-- ══ SETTINGS (collapsible) ══════════════════════════════════ -->
+  <div class="card" id="settingsCard" style="display:none">
+    <div class="card-title">⚙️ Pengaturan API</div>
+    <div class="form-group">
+      <label>Anthropic API Key</label>
+      <input type="password" id="apiKey" placeholder="sk-ant-api03-xxxxxxxxxx"
+             oninput="saveConf('apiKey', this.value)" />
+      <div class="hint">🔒 Tersimpan di browser (localStorage). Hanya dikirim ke api.anthropic.com</div>
+    </div>
+    <div class="form-group">
+      <label>Model AI</label>
+      <select id="modelSel" onchange="saveConf('model', this.value)">
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — Rekomendasi (cepat + akurat)</option>
+        <option value="claude-opus-4-7">Claude Opus 4.7 — Paling cerdas (lebih lambat)</option>
+        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — Paling cepat & hemat</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- ══ SEKOLAH & INFO UJIAN ══════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-title">🏫 Informasi Sekolah & Ujian</div>
+
+    <div class="form-group">
+      <label>Nama Sekolah</label>
+      <div style="display:flex;gap:8px">
+        <select id="schoolSel" style="flex:1" onchange="onSchoolChange(this.value)"></select>
+        <button class="btn btn-ghost" onclick="toggleNewSchool()">+ Tambah</button>
+      </div>
+    </div>
+
+    <div id="newSchoolBox" class="mini-form" style="display:none">
+      <div class="form-group">
+        <label>Nama Sekolah Baru</label>
+        <input type="text" id="newSchoolName" placeholder="contoh: SMA Negeri 3 Bandung" />
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="newSchoolIslami" />
+          Sekolah Islam / Muhammadiyah (nama & konteks Islami)
+        </label>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-primary" onclick="saveNewSchool()">💾 Simpan Sekolah</button>
+        <button class="btn btn-ghost" onclick="toggleNewSchool()">Batal</button>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Mata Pelajaran <span style="color:var(--red)">*</span></label>
+        <input type="text" id="mapel" placeholder="contoh: Matematika, IPA, Bahasa Indonesia" />
+      </div>
+      <div class="form-group">
+        <label>Kelas <span style="color:var(--red)">*</span></label>
+        <input type="text" id="kelas" placeholder="contoh: VII, VIII, X" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Semester</label>
+        <select id="semester">
+          <option value="Ganjil">Ganjil</option>
+          <option value="Genap">Genap</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tahun Ajaran</label>
+        <input type="text" id="tahunAjaran" value="2025/2026" />
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Jenis Ujian</label>
+        <select id="jenisUjian">
+          <option value="UH">UH — Ulangan Harian</option>
+          <option value="STS">STS — Sumatif Tengah Semester</option>
+          <option value="PTS">PTS — Penilaian Tengah Semester</option>
+          <option value="UTS">UTS — Ujian Tengah Semester</option>
+          <option value="PAS" selected>PAS — Penilaian Akhir Semester</option>
+          <option value="UAS">UAS — Ujian Akhir Semester</option>
+          <option value="Try-Out">Try-Out</option>
+          <option value="Lainnya">Lainnya</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Waktu Ujian (menit)</label>
+        <input type="text" id="waktu" value="90" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Nama Penyusun</label>
+      <input type="text" id="penyusun" value="Guru Mata Pelajaran" />
+    </div>
+  </div>
+
+  <!-- ══ JENIS & JUMLAH SOAL ════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-title">❓ Jenis & Jumlah Soal</div>
+
+    <div class="form-group">
+      <label>Jenis Soal</label>
+      <div class="toggle-group">
+        <div class="toggle-opt active" data-v="pg" onclick="setJenis('pg')">📝 Pilihan Ganda</div>
+        <div class="toggle-opt" data-v="essay" onclick="setJenis('essay')">✏️ Essay</div>
+        <div class="toggle-opt" data-v="campuran" onclick="setJenis('campuran')">📋 PG + Essay</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div id="secPG" class="form-group">
+        <label>Jumlah Soal PG</label>
+        <select id="jumlahPG">
+          <option value="10">10 soal</option>
+          <option value="20">20 soal</option>
+          <option value="30">30 soal</option>
+          <option value="40" selected>40 soal</option>
+          <option value="50">50 soal</option>
+        </select>
+      </div>
+      <div id="secEssay" class="form-group" style="display:none">
+        <label>Jumlah Soal Essay</label>
+        <select id="jumlahEssay">
+          <option value="3">3 soal — ringkas (UH)</option>
+          <option value="5" selected>5 soal — standar (STS/PTS)</option>
+          <option value="10">10 soal — menengah</option>
+          <option value="15">15 soal — komprehensif</option>
+          <option value="20">20 soal — ujian besar</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FILE INPUT ════════════════════════════════════════════════ -->
+  <div class="card">
+    <div class="card-title">📎 File Input</div>
+
+    <div class="form-group">
+      <label>File Kisi-Kisi <span style="color:var(--red)">*</span> — PDF, DOCX, TXT, atau Gambar</label>
+      <div class="file-upload" id="upKisiKisi">
+        <input type="file" id="fileKisiKisi" accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp"
+               onchange="onFile('kk', this)" />
+        <div class="up-icon">📄</div>
+        <div class="up-text">Klik atau drag &amp; drop file kisi-kisi</div>
+        <div class="up-name" id="nameKisiKisi">Belum ada file dipilih</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>File Materi / Buku — Opsional (meningkatkan kualitas soal)</label>
+      <div class="file-upload" id="upMateri">
+        <input type="file" id="fileMateri" accept=".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp"
+               onchange="onFile('mat', this)" />
+        <div class="up-icon">📚</div>
+        <div class="up-text">Klik atau drag &amp; drop file materi (opsional)</div>
+        <div class="up-name" id="nameMateri">Belum ada file dipilih</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Catatan / Konteks Tambahan — Opsional</label>
+      <textarea id="catatan" rows="3"
+        placeholder="contoh: fokus bab 3–5, perbanyak soal topik X, hindari soal hitungan rumit..."></textarea>
+    </div>
+  </div>
+
+  <!-- ══ ALERT & GENERATE BUTTON ═══════════════════════════════════ -->
+  <div id="alertBox"></div>
+
+  <button class="btn-generate" id="genBtn" onclick="startGenerate()">
+    🚀 Generate Soal Sekarang
+  </button>
+
+  <!-- ══ PROGRESS ══════════════════════════════════════════════════ -->
+  <div class="card prog-wrap" id="progWrap" style="margin-top:18px">
+    <div class="card-title">⏳ Proses Generate</div>
+    <div id="stepsList"></div>
+    <div style="margin-top:10px;text-align:center">
+      <button class="btn btn-ghost" style="font-size:0.78rem" onclick="toggleLog()">📋 Tampilkan / Sembunyikan Log</button>
+    </div>
+    <div class="log-box" id="logBox"></div>
+  </div>
+
+  <!-- ══ RESULTS ════════════════════════════════════════════════════ -->
+  <div class="card results-wrap" id="resultsWrap" style="margin-top:18px">
+    <div class="card-title">✅ Soal Berhasil Digenerate!</div>
+
+    <div id="distDisplay" style="margin-bottom:20px"></div>
+
+    <div class="dl-grid">
+      <div class="dl-card">
+        <div class="dl-icon">📝</div>
+        <div class="dl-title">Soal PG</div>
+        <div class="dl-desc">Lembar soal pilihan ganda untuk siswa</div>
+        <button class="btn btn-dl" id="dlPG" disabled onclick="dlFile('pg')">⬇️ Download Soal PG</button>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">✏️</div>
+        <div class="dl-title">Soal Essay</div>
+        <div class="dl-desc">Lembar soal uraian untuk siswa</div>
+        <button class="btn btn-dl" id="dlEssay" disabled onclick="dlFile('essay')">⬇️ Download Soal Essay</button>
+      </div>
+      <div class="dl-card">
+        <div class="dl-icon">🔑</div>
+        <div class="dl-title">Kunci Jawaban</div>
+        <div class="dl-desc">Kunci + pembahasan lengkap untuk guru</div>
+        <button class="btn btn-dl" id="dlKunci" disabled onclick="dlFile('kunci')">⬇️ Download Kunci</button>
+      </div>
+    </div>
+
+    <div style="margin-top:18px;text-align:center">
+      <button class="btn btn-primary" onclick="resetAll()">🔄 Generate Soal Baru</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ SCRIPT -->
+<script>
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const DEFAULT_SCHOOLS = [
+  { id:1, nama:"SMP Muhammadiyah 22 Setiabudi Pamulang", konteksIslami:true }
+];
+
+const S = {
+  apiKey:  localStorage.getItem('sai_key')   || '',
+  model:   localStorage.getItem('sai_model') || 'claude-sonnet-4-6',
+  schools: JSON.parse(localStorage.getItem('sai_schools') || JSON.stringify(DEFAULT_SCHOOLS)),
+  jenis:   'pg',
+  kkFile:  null,  // kisi-kisi File object
+  matFile: null,  // materi File object
+  kkContent:  null,
+  matContent: null,
+  soalPG:    [],
+  soalEssay: [],
+  blobs:     {},  // { pg, essay, kunci }
+  info:      {},
+  sessionId: '',
+};
+
+let activeSteps = [];
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('apiKey').value  = S.apiKey;
+  document.getElementById('modelSel').value = S.model;
+  renderSchools();
+});
+
+// ══════════════════════════════════════════════════════════
+//  SETTINGS
+// ══════════════════════════════════════════════════════════
+function toggleSettings() {
+  const c = document.getElementById('settingsCard');
+  c.style.display = c.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveConf(k, v) {
+  if (k === 'apiKey') { S.apiKey = v; localStorage.setItem('sai_key', v); }
+  if (k === 'model')  { S.model  = v; localStorage.setItem('sai_model', v); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  SCHOOLS
+// ══════════════════════════════════════════════════════════
+function renderSchools() {
+  const sel = document.getElementById('schoolSel');
+  sel.innerHTML = S.schools.map(s =>
+    `<option value="${s.id}">${s.nama}</option>`
+  ).join('');
+}
+
+function onSchoolChange() {}
+
+function toggleNewSchool() {
+  const box = document.getElementById('newSchoolBox');
+  box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+function saveNewSchool() {
+  const nama = document.getElementById('newSchoolName').value.trim();
+  if (!nama) { flash('Nama sekolah tidak boleh kosong!', 'error'); return; }
+  const newId = Math.max(...S.schools.map(s => s.id), 0) + 1;
+  const konteksIslami = document.getElementById('newSchoolIslami').checked;
+  S.schools.push({ id: newId, nama, konteksIslami });
+  localStorage.setItem('sai_schools', JSON.stringify(S.schools));
+  renderSchools();
+  document.getElementById('schoolSel').value = newId;
+  toggleNewSchool();
+  document.getElementById('newSchoolName').value = '';
+  document.getElementById('newSchoolIslami').checked = false;
+  flash('✅ Sekolah berhasil disimpan!', 'success');
+}
+
+// ══════════════════════════════════════════════════════════
+//  JENIS SOAL
+// ══════════════════════════════════════════════════════════
+function setJenis(v) {
+  S.jenis = v;
+  document.querySelectorAll('.toggle-opt').forEach(el =>
+    el.classList.toggle('active', el.dataset.v === v)
+  );
+  const showPG = v === 'pg' || v === 'campuran';
+  const showEs = v === 'essay' || v === 'campuran';
+  document.getElementById('secPG').style.display    = showPG ? 'block' : 'none';
+  document.getElementById('secEssay').style.display = showEs ? 'block' : 'none';
+}
+
+// ══════════════════════════════════════════════════════════
+//  FILE HANDLING
+// ══════════════════════════════════════════════════════════
+function onFile(type, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (type === 'kk') {
+    S.kkFile = file;
+    document.getElementById('nameKisiKisi').textContent = `✅ ${file.name} (${fmtSize(file.size)})`;
+    document.getElementById('upKisiKisi').classList.add('has-file');
+  } else {
+    S.matFile = file;
+    document.getElementById('nameMateri').textContent = `✅ ${file.name} (${fmtSize(file.size)})`;
+    document.getElementById('upMateri').classList.add('has-file');
+  }
+}
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+function ab2b64(buf) {
+  let bin = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function readFileContent(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  if (ext === 'txt') {
+    return { type: 'text', content: await file.text() };
+  }
+  if (ext === 'pdf') {
+    const buf = await file.arrayBuffer();
+    return { type: 'pdf', data: ab2b64(buf) };
+  }
+  if (['docx','doc'].includes(ext)) {
+    const buf = await file.arrayBuffer();
+    const res = await mammoth.extractRawText({ arrayBuffer: buf });
+    return { type: 'text', content: res.value };
+  }
+  if (['jpg','jpeg','png','webp','gif'].includes(ext)) {
+    return new Promise(resolve => {
+      const fr = new FileReader();
+      fr.onload = e => resolve({ type: 'image', data: e.target.result.split(',')[1], mediaType: file.type || 'image/jpeg' });
+      fr.readAsDataURL(file);
+    });
+  }
+  throw new Error(`Format tidak didukung: .${ext}`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  CLAUDE API
+// ══════════════════════════════════════════════════════════
+async function claude(system, userContent) {
+  if (!S.apiKey) throw new Error('API Key belum diisi! Buka menu Pengaturan.');
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': S.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model: S.model, max_tokens: 8192, system, messages: [{ role:'user', content: userContent }] })
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(`API ${r.status}: ${e.error?.message || r.statusText}`);
+  }
+  const d = await r.json();
+  return d.content.map(b => b.text || '').join('');
+}
+
+function buildContent(fc, prompt) {
+  if (!fc || fc.type === 'text') {
+    return fc ? `${prompt}\n\nKonten:\n${fc.content}` : prompt;
+  }
+  if (fc.type === 'pdf') {
+    return [
+      { type: 'text', text: prompt },
+      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fc.data } }
+    ];
+  }
+  if (fc.type === 'image') {
+    return [
+      { type: 'text', text: prompt },
+      { type: 'image', source: { type: 'base64', media_type: fc.mediaType, data: fc.data } }
+    ];
+  }
+  return prompt;
+}
+
+function stripJSON(t) {
+  return t.replace(/```json\n?/g,'').replace(/```\n?/g,'').trim();
+}
+
+// ══════════════════════════════════════════════════════════
+//  AI FUNCTIONS
+// ══════════════════════════════════════════════════════════
+async function aiAnalyzeKisiKisi(fc, info) {
+  const prompt = `Analisis kisi-kisi ujian berikut untuk ${info.mapel} Kelas ${info.kelas}.
+Kembalikan HANYA JSON valid (tanpa markdown, tanpa teks lain):
+{"namaUjian":"string","mapel":"string","kelas":"string","indikator":[{"no":1,"materi":"nama topik","kompetensiDasar":"KD","indikatorSoal":"deskripsi indikator","level":"C2","jumlahSoal":3,"nomorSoal":"1-3"}]}`;
+  const text = await claude('Kamu adalah asisten guru ahli kisi-kisi ujian Indonesia. Kembalikan HANYA JSON valid tanpa markdown.', buildContent(fc, prompt));
+  return JSON.parse(stripJSON(text));
+}
+
+async function aiAnalyzeMateri(fc, indikator, info) {
+  const list = indikator.map(i => `${i.no}. [${i.materi}] ${i.indikatorSoal} (Level ${i.level})`).join('\n');
+  const prompt = `Buat ringkasan konten relevan dari materi berikut untuk setiap indikator:\n\nINDIKATOR:\n${list}\n\nKembalikan HANYA JSON:\n{"ringkasanPerIndikator":{"1":"ringkasan indikator 1","2":"ringkasan indikator 2"}}`;
+  const content = fc.type === 'text'
+    ? `${prompt}\n\nMATERI:\n${fc.content.slice(0, 12000)}`
+    : buildContent(fc, prompt);
+  try {
+    const text = await claude('Kamu adalah asisten guru ahli analisis materi Indonesia. Kembalikan HANYA JSON valid.', content);
+    return JSON.parse(stripJSON(text));
+  } catch { return { ringkasanPerIndikator: {} }; }
+}
+
+async function aiGenPGBatch({ info, indikator, ringkasan, start, end, prev, islami }) {
+  const n = end - start + 1;
+  const ilist = indikator.map(i => {
+    const r = ringkasan?.ringkasanPerIndikator?.[i.no] || '';
+    return `Indikator ${i.no}: [${i.materi}] ${i.indikatorSoal} — Level:${i.level}${r?`\n   Konten: ${r.slice(0,220)}`:''}`;
+  }).join('\n\n');
+  const hitung = {A:0,B:0,C:0,D:0};
+  prev.forEach(s => { if(hitung[s.jawaban]!==undefined) hitung[s.jawaban]++; });
+  const islamiNote = islami ? 'Gunakan nama tokoh Islami (Ahmad, Fatimah, Malik, Aisyah) dan konteks keislaman.' : '';
+  const catatan = info.catatanTambahan ? `Catatan guru: ${info.catatanTambahan}` : '';
+
+  const prompt = `Guru ${info.mapel} membuat soal ujian berkualitas untuk siswa ${info.kelas} Indonesia.
+UJIAN: ${info.namaUjian} | ${info.mapel} Kelas ${info.kelas}
+${islamiNote}${catatan}
+
+INDIKATOR:
+${ilist}
+
+DISTRIBUSI JAWABAN SAAT INI: A:${hitung.A} B:${hitung.B} C:${hitung.C} D:${hitung.D}
+⚠️ Pastikan distribusi A/B/C/D batch ini MERATA.
+
+Buat soal PG nomor ${start}–${end} (${n} soal).
+Syarat: 1 jawaban benar, pengecoh plausibel, bahasa jenjang SMP/SMA, level Bloom sesuai indikator.
+
+Kembalikan HANYA JSON array:
+[{"no":${start},"indikator":1,"materi":"...","level":"C2","soal":"...","pilihan":["teks A","teks B","teks C","teks D"],"jawaban":"A","pembahasan":"..."}]`;
+
+  const text = await claude('Kamu adalah guru ahli pembuat soal PG Indonesia. Kembalikan HANYA JSON array valid tanpa markdown.', prompt);
+  return JSON.parse(stripJSON(text));
+}
+
+async function aiGenEssay({ info, indikator, ringkasan, jumlah, islami }) {
+  const ilist = indikator.map(i => {
+    const r = ringkasan?.ringkasanPerIndikator?.[i.no] || '';
+    return `${i.no}. [${i.materi}] ${i.indikatorSoal} — Level:${i.level}${r?`\n   ${r.slice(0,150)}`:''}`;
+  }).join('\n');
+  const islamiNote = islami ? 'Gunakan nama tokoh Islami dan konteks keislaman.' : '';
+  const catatan = info.catatanTambahan ? `Catatan guru: ${info.catatanTambahan}` : '';
+
+  const prompt = `Guru ${info.mapel} membuat soal essay untuk ${info.namaUjian} Kelas ${info.kelas}.
+${islamiNote}${catatan}
+
+INDIKATOR:
+${ilist}
+
+Buat ${jumlah} soal essay: kemampuan berpikir tinggi (C4-C6), rubrik jelas, total skor=100.
+
+Kembalikan HANYA JSON array:
+[{"no":1,"tipe":"essay","indikator":1,"materi":"...","level":"C4","soal":"...","petunjuk":"...","skor":20,"kunci":"...","rubrik":[{"kriteria":"...","skor":5}]}]`;
+
+  const text = await claude('Kamu adalah guru ahli pembuat soal essay Indonesia. Kembalikan HANYA JSON array valid.', prompt);
+  return JSON.parse(stripJSON(text));
+}
+
+// ══════════════════════════════════════════════════════════
+//  STEPS UI
+// ══════════════════════════════════════════════════════════
+const STEP_DEF = [
+  { id:'readKK',      label:'Membaca file kisi-kisi' },
+  { id:'analyzeKK',   label:'Menganalisis kisi-kisi dengan AI' },
+  { id:'readMat',     label:'Membaca file materi' },
+  { id:'analyzeMat',  label:'Menganalisis materi per indikator' },
+  { id:'genPG',       label:'Membuat soal Pilihan Ganda' },
+  { id:'genEssay',    label:'Membuat soal Essay' },
+  { id:'buildDocs',   label:'Membuat dokumen DOCX' },
+];
+
+function initSteps(hasMat, hasPG, hasEssay) {
+  activeSteps = STEP_DEF.filter(s => {
+    if (s.id === 'readMat' || s.id === 'analyzeMat') return hasMat;
+    if (s.id === 'genPG')    return hasPG;
+    if (s.id === 'genEssay') return hasEssay;
+    return true;
+  });
+  document.getElementById('stepsList').innerHTML = activeSteps.map(s => `
+    <div class="step-row" id="row_${s.id}">
+      <div class="step-icon pending" id="ico_${s.id}">⏳</div>
+      <div class="step-info">
+        <div class="step-label">${s.label}</div>
+        <div class="step-detail" id="det_${s.id}">Menunggu...</div>
+      </div>
+    </div>`).join('');
+}
+
+function setStep(id, state, detail) {
+  const ico = document.getElementById(`ico_${id}`);
+  const det = document.getElementById(`det_${id}`);
+  if (!ico) return;
+  const map = { pending:['pending','⏳'], running:['running','⏳'], done:['done','✅'], err:['err','❌'] };
+  const [cls, em] = map[state] || map.pending;
+  ico.className = `step-icon ${cls}`;
+  ico.textContent = em;
+  if (detail && det) det.textContent = detail;
+}
+
+// ══════════════════════════════════════════════════════════
+//  LOG
+// ══════════════════════════════════════════════════════════
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  const d = document.createElement('div');
+  d.className = `log-line ${type==='ok'?'log-ok':type==='warn'?'log-warn':type==='err'?'log-err':'log-info'}`;
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+function toggleLog() {
+  document.getElementById('logBox').classList.toggle('show');
+}
+
+// ══════════════════════════════════════════════════════════
+//  FLASH ALERT
+// ══════════════════════════════════════════════════════════
+function flash(msg, type='info') {
+  const box = document.getElementById('alertBox');
+  box.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+  setTimeout(() => { box.innerHTML = ''; }, 6000);
+}
+
+// ══════════════════════════════════════════════════════════
+//  DOCX BUILDER  (browser UMD: window.docx)
+// ══════════════════════════════════════════════════════════
+const DC = {
+  FONT:'Times New Roman', FS:21, FSS:20, PW:11906, PH:16838, MRG:851,
+  LABELS:['A','B','C','D'],
+  WARNA:{A:'C6EFCE',B:'BDD7EE',C:'FFEB9C',D:'FFCCAA'},
+  HL:{A:'green',B:'cyan',C:'yellow',D:'darkYellow'}
+};
+
+function D() { return window.docx; }
+
+function NB() {
+  const nb={style:D().BorderStyle.NONE,size:0,color:'FFFFFF'};
+  return {top:nb,bottom:nb,left:nb,right:nb};
+}
+
+function identLine(label) {
+  const {Paragraph,TextRun}=D();
+  return new Paragraph({spacing:{before:28,after:28,line:252},children:[
+    new TextRun({text:label,font:DC.FONT,size:DC.FS,bold:true}),
+    new TextRun({text:' : ',font:DC.FONT,size:DC.FS}),
+    new TextRun({text:'.'.repeat(38),font:DC.FONT,size:DC.FS}),
+  ]});
+}
+
+function buatHeader(INFO) {
+  const {Paragraph,TextRun,Table,TableRow,TableCell,AlignmentType,BorderStyle,WidthType}=D();
+  const tw=DC.PW-DC.MRG*2, ci=Math.round(tw*0.56), cg=120, cb=tw-ci-cg;
+  const bb={style:BorderStyle.SINGLE,size:6,color:'000000'};
+  const bord={top:bb,bottom:bb,left:bb,right:bb};
+  const nb=NB();
+  return [
+    new Table({width:{size:tw,type:WidthType.DXA},columnWidths:[ci,cg,cb],rows:[new TableRow({children:[
+      new TableCell({borders:nb,width:{size:ci,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:60},children:[
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:20},children:[new TextRun({text:INFO.sekolah,font:DC.FONT,size:28,bold:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:14},children:[new TextRun({text:'─'.repeat(48),font:DC.FONT,size:16})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:14},children:[new TextRun({text:INFO.subtitle,font:DC.FONT,size:26,bold:true})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:14},children:[new TextRun({text:INFO.tahunAjaran,font:DC.FONT,size:DC.FS})]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
+          new TextRun({text:'Mata Pelajaran : ',font:DC.FONT,size:DC.FS,bold:true}),
+          new TextRun({text:INFO.mapel,font:DC.FONT,size:DC.FS}),
+        ]}),
+        new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:0},children:[
+          new TextRun({text:'Kelas : ',font:DC.FONT,size:DC.FS,bold:true}),
+          new TextRun({text:`${INFO.kelas}   `,font:DC.FONT,size:DC.FS}),
+          new TextRun({text:'Waktu : ',font:DC.FONT,size:DC.FS,bold:true}),
+          new TextRun({text:INFO.waktu,font:DC.FONT,size:DC.FS}),
+        ]}),
+      ]}),
+      new TableCell({borders:nb,width:{size:cg,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:0},children:[new Paragraph({children:[]})]}),
+      new TableCell({borders:bord,width:{size:cb,type:WidthType.DXA},margins:{top:80,bottom:80,left:140,right:100},
+        children:[identLine('Nama      '),identLine('Kelas     '),identLine('No. Absen '),identLine('Hari/Tgl  ')]}),
+    ]})]
+    }),
+    new Paragraph({spacing:{before:80,after:0},border:{bottom:{style:BorderStyle.DOUBLE,size:6,color:'000000',space:1}},children:[]}),
+    new Paragraph({spacing:{before:60,after:80},children:[
+      new TextRun({text:'Petunjuk: ',font:DC.FONT,size:DC.FS,bold:true}),
+      new TextRun({text:INFO.petunjuk,font:DC.FONT,size:DC.FS,italics:true}),
+    ]}),
+  ];
+}
+
+function renderPG(s) {
+  const {Paragraph,TextRun}=D();
+  const items=[new Paragraph({spacing:{before:60,after:20,line:264},children:[
+    new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
+    new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
+  ]})];
+  s.pilihan.forEach((opt,i)=>{
+    const teks=opt.startsWith(`${DC.LABELS[i]}.`)?opt.slice(2).trim():opt;
+    items.push(new Paragraph({spacing:{before:0,after:0,line:252},indent:{left:220},children:[
+      new TextRun({text:`${DC.LABELS[i]}.  `,font:DC.FONT,size:DC.FSS,bold:true}),
+      new TextRun({text:teks,font:DC.FONT,size:DC.FSS}),
+    ]}));
+  });
+  items.push(new Paragraph({spacing:{before:0,after:40},children:[]}));
+  return items;
+}
+
+function soal2Kolom(soal) {
+  const {Paragraph,Table,TableRow,TableCell,BorderStyle,WidthType}=D();
+  const tw=DC.PW-DC.MRG*2, div=160, cw=Math.floor((tw-div)/2);
+  const half=Math.ceil(soal.length/2);
+  const left=soal.slice(0,half).flatMap(s=>renderPG(s));
+  const right=soal.slice(half).flatMap(s=>renderPG(s));
+  const nb=NB(); const nb1={style:D().BorderStyle.NONE,size:0,color:'FFFFFF'};
+  const dv={style:BorderStyle.SINGLE,size:6,color:'888888'};
+  return [new Table({width:{size:tw,type:WidthType.DXA},columnWidths:[cw,div,cw],rows:[new TableRow({children:[
+    new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:80},children:left}),
+    new TableCell({borders:{top:nb1,bottom:nb1,left:dv,right:dv},width:{size:div,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:0},children:[new Paragraph({children:[]})]}),
+    new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:80,right:0},children:right}),
+  ]})]})];
+}
+
+async function buildSoalPG(info, soalPG) {
+  const {Document,Packer,Paragraph,TextRun,Footer,AlignmentType,PageNumber}=D();
+  const INFO={...info,subtitle:info.namaUjian,petunjuk:'Berilah tanda silang (X) pada huruf A, B, C, atau D di depan jawaban yang paling benar!'};
+  const footer=new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[
+    new TextRun({text:`${info.mapel}  |  Kelas ${info.kelas}  |  ${info.namaUjian}  |  Halaman `,font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.CURRENT],font:DC.FONT,size:18}),
+    new TextRun({text:' dari ',font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.TOTAL_PAGES],font:DC.FONT,size:18}),
+  ]})]});
+  const doc=new Document({sections:[{
+    properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
+    footers:{default:footer},
+    children:[...buatHeader(INFO),...soal2Kolom(soalPG)]
+  }]});
+  return D().Packer.toBlob(doc);
+}
+
+async function buildSoalEssay(info, soalEssay) {
+  const {Document,Packer,Paragraph,TextRun,Footer,AlignmentType,PageNumber,BorderStyle}=D();
+  const INFO={...info,subtitle:`${info.namaUjian} — SOAL ESSAY`,petunjuk:'Jawablah pertanyaan-pertanyaan berikut dengan jelas dan lengkap pada tempat yang disediakan!'};
+  const garisJwb=skor=>Array.from({length:Math.max(3,Math.floor(skor/5)+2)},()=>
+    new Paragraph({spacing:{before:0,after:160},border:{bottom:{style:BorderStyle.SINGLE,size:2,color:'AAAAAA',space:1}},children:[new TextRun({text:'',font:DC.FONT,size:DC.FS})]})
+  );
+  const items=soalEssay.flatMap(s=>[
+    new Paragraph({spacing:{before:120,after:20,line:276},children:[
+      new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
+      new TextRun({text:`(Skor: ${s.skor}) `,font:DC.FONT,size:DC.FSS,italics:true}),
+      new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
+    ]}),
+    ...(s.petunjuk?[new Paragraph({spacing:{before:0,after:40},indent:{left:220},children:[new TextRun({text:`Petunjuk: ${s.petunjuk}`,font:DC.FONT,size:DC.FSS,italics:true,color:'555555'})]})]:[]),
+    ...garisJwb(s.skor),
+  ]);
+  const footer=new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[
+    new TextRun({text:`${info.mapel}  |  Kelas ${info.kelas}  |  Soal Essay  |  Halaman `,font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.CURRENT],font:DC.FONT,size:18}),
+    new TextRun({text:' dari ',font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.TOTAL_PAGES],font:DC.FONT,size:18}),
+  ]})]});
+  const doc=new Document({sections:[{
+    properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
+    footers:{default:footer},children:[...buatHeader(INFO),...items]
+  }]});
+  return D().Packer.toBlob(doc);
+}
+
+async function buildKunci(info, soalPG, soalEssay) {
+  const {Document,Packer,Paragraph,TextRun,Table,TableRow,TableCell,Footer,AlignmentType,BorderStyle,WidthType,ShadingType,UnderlineType,PageNumber}=D();
+  const tw=DC.PW-DC.MRG*2; const nb=NB(); const nb1={style:BorderStyle.NONE,size:0,color:'FFFFFF'};
+
+  function tabelKunci(soal) {
+    const cn=700,cj=1320,cws=Array(8).fill(0).map((_,i)=>i%2===0?cn:cj);
+    const tw2=cws.reduce((a,b)=>a+b,0);
+    const bH={style:BorderStyle.SINGLE,size:8,color:'1F497D'};
+    const bD={style:BorderStyle.SINGLE,size:4,color:'999999'};
+    const bH4={top:bH,bottom:bH,left:bH,right:bH};
+    const bD4={top:bD,bottom:bD,left:bD,right:bD};
+    const hc=(t,w)=>new TableCell({borders:bH4,width:{size:w,type:WidthType.DXA},shading:{fill:'1F497D',type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:80,right:80},children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:t,bold:true,size:22,color:'FFFFFF',font:DC.FONT})]})]});
+    const hrow=new TableRow({children:Array(4).fill(null).flatMap(()=>[hc('No.',cn),hc('Jawaban',cj)])});
+    const pk=Math.ceil(soal.length/4);
+    const rows=[];
+    for(let r=0;r<pk;r++){
+      const cells=[];
+      for(let c=0;c<4;c++){
+        const idx=r+c*pk;
+        if(idx<soal.length){
+          const s=soal[idx];
+          cells.push(new TableCell({borders:bD4,width:{size:cn,type:WidthType.DXA},margins:{top:80,bottom:80,left:80,right:80},children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:`${s.no}.`,size:DC.FS,font:DC.FONT})]})]}));
+          cells.push(new TableCell({borders:bD4,width:{size:cj,type:WidthType.DXA},shading:{fill:DC.WARNA[s.jawaban],type:ShadingType.CLEAR},margins:{top:80,bottom:80,left:80,right:80},children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:s.jawaban,bold:true,size:22,font:DC.FONT})]})]}));
+        } else {
+          cells.push(new TableCell({borders:bD4,width:{size:cn,type:WidthType.DXA},margins:{top:80,bottom:80,left:80,right:80},children:[new Paragraph({children:[]})]}));
+          cells.push(new TableCell({borders:bD4,width:{size:cj,type:WidthType.DXA},margins:{top:80,bottom:80,left:80,right:80},children:[new Paragraph({children:[]})]}));
+        }
+      }
+      rows.push(new TableRow({children:cells}));
+    }
+    return new Table({width:{size:tw2,type:WidthType.DXA},columnWidths:cws,rows:[hrow,...rows]});
+  }
+
+  function pembahasan2Kolom(soal) {
+    const div=160,cwp=Math.floor((tw-div)/2);
+    const bPD={style:BorderStyle.SINGLE,size:4,color:'888888'};
+    const rend=list=>{
+      const p=[];
+      for(const s of list){
+        p.push(new Paragraph({spacing:{before:80,after:16},children:[
+          new TextRun({text:`Soal ${s.no}. `,bold:true,size:DC.FS,font:DC.FONT}),
+          new TextRun({text:'Jawaban: ',size:DC.FS,font:DC.FONT}),
+          new TextRun({text:` ${s.jawaban} `,bold:true,size:DC.FS,font:DC.FONT,highlight:DC.HL[s.jawaban]}),
+        ]}));
+        p.push(new Paragraph({spacing:{before:0,after:40},indent:{left:280},children:[new TextRun({text:s.pembahasan,font:DC.FONT,size:DC.FSS})]}));
+      }
+      return p;
+    };
+    const half=Math.ceil(soal.length/2);
+    return new Table({width:{size:tw,type:WidthType.DXA},columnWidths:[cwp,div,cwp],rows:[new TableRow({children:[
+      new TableCell({borders:nb,width:{size:cwp,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:80},children:rend(soal.slice(0,half))}),
+      new TableCell({borders:{top:nb1,bottom:nb1,left:bPD,right:bPD},width:{size:div,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:0},children:[new Paragraph({children:[]})]}),
+      new TableCell({borders:nb,width:{size:cwp,type:WidthType.DXA},margins:{top:0,bottom:0,left:80,right:0},children:rend(soal.slice(half))}),
+    ]})]});
+  }
+
+  function kunciEssay(soalEssay) {
+    const items=[];
+    const bR={style:BorderStyle.SINGLE,size:4,color:'BBBBBB'};
+    const bR4={top:bR,bottom:bR,left:bR,right:bR};
+    soalEssay.forEach(s=>{
+      items.push(new Paragraph({spacing:{before:120,after:20},border:{bottom:{style:BorderStyle.SINGLE,size:2,color:'1F497D',space:2}},children:[
+        new TextRun({text:`Soal ${s.no}. `,bold:true,size:DC.FS,font:DC.FONT}),
+        new TextRun({text:`(Skor Maks: ${s.skor})`,size:DC.FSS,font:DC.FONT,italics:true}),
+      ]}));
+      items.push(new Paragraph({spacing:{before:60,after:20},children:[new TextRun({text:s.soal,font:DC.FONT,size:DC.FSS,italics:true,color:'444444'})]}));
+      items.push(new Paragraph({spacing:{before:40,after:20},children:[new TextRun({text:'Kunci Jawaban:',bold:true,size:DC.FS,font:DC.FONT,color:'1F497D'})]}));
+      items.push(new Paragraph({spacing:{before:0,after:60},indent:{left:280},children:[new TextRun({text:s.kunci,font:DC.FONT,size:DC.FSS})]}));
+      if(s.rubrik?.length){
+        const c1=6000,c2=1200;
+        items.push(new Paragraph({spacing:{before:20,after:10},children:[new TextRun({text:'Rubrik Penilaian:',bold:true,size:DC.FSS,font:DC.FONT})]}));
+        items.push(new Table({width:{size:c1+c2,type:WidthType.DXA},columnWidths:[c1,c2],rows:[
+          new TableRow({children:[
+            new TableCell({borders:bR4,shading:{fill:'1F497D',type:ShadingType.CLEAR},width:{size:c1,type:WidthType.DXA},margins:{top:60,bottom:60,left:100,right:100},children:[new Paragraph({children:[new TextRun({text:'Kriteria',bold:true,size:DC.FSS,font:DC.FONT,color:'FFFFFF'})]})]}),
+            new TableCell({borders:bR4,shading:{fill:'1F497D',type:ShadingType.CLEAR},width:{size:c2,type:WidthType.DXA},margins:{top:60,bottom:60,left:100,right:100},children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:'Skor',bold:true,size:DC.FSS,font:DC.FONT,color:'FFFFFF'})]})]}),
+          ]}),
+          ...s.rubrik.map(r=>new TableRow({children:[
+            new TableCell({borders:bR4,width:{size:c1,type:WidthType.DXA},margins:{top:60,bottom:60,left:100,right:100},children:[new Paragraph({children:[new TextRun({text:r.kriteria,font:DC.FONT,size:DC.FSS})]})]}),
+            new TableCell({borders:bR4,width:{size:c2,type:WidthType.DXA},margins:{top:60,bottom:60,left:100,right:100},children:[new Paragraph({alignment:AlignmentType.CENTER,children:[new TextRun({text:`${r.skor}`,font:DC.FONT,size:DC.FSS})]})]}),
+          ]})),
+        ]}));
+      }
+    });
+    return items;
+  }
+
+  const ch=[];
+  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:20},children:[new TextRun({text:info.sekolah,font:DC.FONT,size:28,bold:true})]}));
+  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:20},children:[new TextRun({text:'KUNCI JAWABAN & PEMBAHASAN',font:DC.FONT,size:36,bold:true})]}));
+  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:14},children:[new TextRun({text:`${info.namaUjian}  |  ${info.mapel}  Kelas ${info.kelas}  |  ${info.tahunAjaran}`,font:DC.FONT,size:DC.FSS,underline:{type:UnderlineType.SINGLE}})]}));
+  ch.push(new Paragraph({alignment:AlignmentType.CENTER,spacing:{before:0,after:100},children:[new TextRun({text:`Penyusun: ${info.penyusun}`,font:DC.FONT,size:DC.FSS})]}));
+  ch.push(new Paragraph({spacing:{before:0,after:8},children:[new TextRun({text:'⚠️ DOKUMEN INI HANYA UNTUK GURU — RAHASIA',bold:true,size:DC.FS,font:DC.FONT,color:'CC0000'})]}));
+  ch.push(new Paragraph({spacing:{before:20,after:80},border:{bottom:{style:BorderStyle.SINGLE,size:8,color:'1F497D',space:1}},children:[]}));
+
+  if(soalPG.length>0){
+    ch.push(new Paragraph({spacing:{before:60,after:60},children:[new TextRun({text:'BAGIAN A — PILIHAN GANDA',font:DC.FONT,size:26,bold:true,color:'1F497D'})]}));
+    ch.push(tabelKunci(soalPG));
+    ch.push(new Paragraph({spacing:{before:80,after:40},children:[
+      new TextRun({text:'Legenda:  ',bold:true,size:19,font:DC.FONT}),
+      new TextRun({text:'  A  ',size:19,font:DC.FONT,highlight:'green'}),
+      new TextRun({text:'  B  ',size:19,font:DC.FONT,highlight:'cyan'}),
+      new TextRun({text:'  C  ',size:19,font:DC.FONT,highlight:'yellow'}),
+      new TextRun({text:'  D  ',size:19,font:DC.FONT,highlight:'darkYellow'}),
+    ]}));
+    ch.push(new Paragraph({spacing:{before:80,after:120},border:{bottom:{style:BorderStyle.SINGLE,size:6,color:'1F497D',space:1}},children:[]}));
+    ch.push(new Paragraph({spacing:{before:80,after:100},children:[new TextRun({text:'PEMBAHASAN SOAL PG',font:DC.FONT,size:26,bold:true,color:'1F497D'})]}));
+    ch.push(pembahasan2Kolom(soalPG));
+  }
+  if(soalEssay.length>0){
+    ch.push(new Paragraph({spacing:{before:160,after:80},border:{top:{style:BorderStyle.DOUBLE,size:6,color:'1F497D',space:2}},children:[new TextRun({text:'BAGIAN B — KUNCI JAWABAN ESSAY',font:DC.FONT,size:26,bold:true,color:'1F497D'})]}));
+    ch.push(...kunciEssay(soalEssay));
+  }
+
+  const footer=new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[
+    new TextRun({text:`KUNCI — ${info.mapel}  |  Kelas ${info.kelas}  |  ${info.namaUjian}  |  Halaman `,font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.CURRENT],font:DC.FONT,size:18}),
+    new TextRun({text:' dari ',font:DC.FONT,size:18}),
+    new TextRun({children:[PageNumber.TOTAL_PAGES],font:DC.FONT,size:18}),
+  ]})]});
+  const doc=new Document({sections:[{
+    properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
+    footers:{default:footer},children:ch
+  }]});
+  return D().Packer.toBlob(doc);
+}
+
+// ══════════════════════════════════════════════════════════
+//  MAIN GENERATE
+// ══════════════════════════════════════════════════════════
+async function startGenerate() {
+  // Validasi
+  if (!S.apiKey) { toggleSettings(); flash('❌ Masukkan API Key di menu Pengaturan terlebih dahulu!', 'error'); return; }
+  if (!document.getElementById('mapel').value.trim()) { flash('❌ Mata pelajaran wajib diisi!', 'error'); return; }
+  if (!document.getElementById('kelas').value.trim())  { flash('❌ Kelas wajib diisi!', 'error'); return; }
+  if (!S.kkFile) { flash('❌ File kisi-kisi wajib diupload!', 'error'); return; }
+
+  // Kumpul info
+  const schoolId = document.getElementById('schoolSel').value;
+  const school   = S.schools.find(s => s.id == schoolId) || {};
+  const jenis    = S.jenis;
+  const jumlahPG    = (jenis==='pg'||jenis==='campuran') ? parseInt(document.getElementById('jumlahPG').value) : 0;
+  const jumlahEssay = (jenis==='essay'||jenis==='campuran') ? parseInt(document.getElementById('jumlahEssay').value) : 0;
+  const jenisUjian  = document.getElementById('jenisUjian').value;
+  const semester    = document.getElementById('semester').value;
+  const tahunAjaran = document.getElementById('tahunAjaran').value;
+
+  S.info = {
+    sekolah:       school.nama || 'Sekolah',
+    mapel:         document.getElementById('mapel').value.trim(),
+    kelas:         document.getElementById('kelas').value.trim(),
+    semester,
+    tahunAjaran,
+    namaUjian:     `${jenisUjian} ${semester} ${tahunAjaran}`,
+    waktu:         `${document.getElementById('waktu').value} Menit`,
+    penyusun:      document.getElementById('penyusun').value.trim(),
+    catatanTambahan: document.getElementById('catatan').value.trim() || null,
+    jumlahPG,
+    jumlahEssay,
+    konteksIslami: school.konteksIslami || false,
+  };
+
+  const btn = document.getElementById('genBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Sedang generate...';
+
+  const pw = document.getElementById('progWrap');
+  pw.classList.add('show');
+  pw.scrollIntoView({ behavior:'smooth' });
+  document.getElementById('resultsWrap').classList.remove('show');
+  document.getElementById('logBox').innerHTML = '';
+  S.blobs = {}; S.soalPG = []; S.soalEssay = [];
+
+  initSteps(!!S.matFile, jumlahPG > 0, jumlahEssay > 0);
+
+  try {
+    // 1. Baca kisi-kisi
+    setStep('readKK','running','Membaca file...');
+    log(`Membaca kisi-kisi: ${S.kkFile.name}`);
+    S.kkContent = await readFileContent(S.kkFile);
+    setStep('readKK','done',`Format: ${S.kkContent.type}`);
+    log('File kisi-kisi siap','ok');
+
+    // 2. Analisis kisi-kisi
+    setStep('analyzeKK','running','Mengirim ke Claude AI...');
+    log('Menganalisis kisi-kisi dengan AI...');
+    const strukturKisi = await aiAnalyzeKisiKisi(S.kkContent, S.info);
+    setStep('analyzeKK','done',`${strukturKisi.indikator?.length || 0} indikator ditemukan`);
+    log(`Ditemukan ${strukturKisi.indikator?.length || 0} indikator`,'ok');
+
+    // 3-4. Materi (opsional)
+    let ringkasan = {};
+    if (S.matFile) {
+      setStep('readMat','running','Membaca file materi...');
+      log(`Membaca materi: ${S.matFile.name}`);
+      S.matContent = await readFileContent(S.matFile);
+      setStep('readMat','done',`Format: ${S.matContent.type}`);
+      log('File materi siap','ok');
+
+      setStep('analyzeMat','running','Menganalisis materi per indikator...');
+      log('Menganalisis materi dengan AI...');
+      ringkasan = await aiAnalyzeMateri(S.matContent, strukturKisi.indikator, S.info);
+      setStep('analyzeMat','done','Ringkasan materi selesai');
+      log('Analisis materi selesai','ok');
+    }
+
+    // 5. Generate PG
+    if (jumlahPG > 0) {
+      setStep('genPG','running',`Membuat ${jumlahPG} soal PG...`);
+      const totalBatch = Math.ceil(jumlahPG / 10);
+      for (let b = 0; b < totalBatch; b++) {
+        const start = b*10+1, end = Math.min(start+9, jumlahPG);
+        document.getElementById('det_genPG').textContent = `Batch ${b+1}/${totalBatch}: soal ${start}–${end}...`;
+        log(`Generate soal PG ${start}–${end}...`);
+        const batch = await aiGenPGBatch({
+          info: S.info, indikator: strukturKisi.indikator,
+          ringkasan, start, end, prev: S.soalPG, islami: S.info.konteksIslami
+        });
+        S.soalPG = [...S.soalPG, ...batch];
+        log(`Soal PG ${start}–${end} selesai ✅`,'ok');
+      }
+      // Validasi distribusi
+      const dist={A:0,B:0,C:0,D:0};
+      S.soalPG.forEach(s=>{ if(dist[s.jawaban]!==undefined) dist[s.jawaban]++; });
+      const total=S.soalPG.length;
+      Object.entries(dist).forEach(([h,n])=>log(`Jawaban ${h}: ${n} soal (${(n/total*100).toFixed(0)}%)`,Math.abs(n-total/4)<=total*0.15?'ok':'warn'));
+      setStep('genPG','done',`${S.soalPG.length} soal PG selesai`);
+    }
+
+    // 6. Generate Essay
+    if (jumlahEssay > 0) {
+      setStep('genEssay','running',`Membuat ${jumlahEssay} soal Essay...`);
+      log(`Generate ${jumlahEssay} soal Essay...`);
+      S.soalEssay = await aiGenEssay({
+        info: S.info, indikator: strukturKisi.indikator,
+        ringkasan, jumlah: jumlahEssay, islami: S.info.konteksIslami
+      });
+      setStep('genEssay','done',`${S.soalEssay.length} soal Essay selesai`);
+      log(`${S.soalEssay.length} soal Essay selesai ✅`,'ok');
+    }
+
+    // 7. Build DOCX
+    setStep('buildDocs','running','Membuat file DOCX...');
+    if (S.soalPG.length > 0) {
+      log('Membuat soal PG.docx...');
+      S.blobs.pg = await buildSoalPG(S.info, S.soalPG);
+      log('Soal PG.docx selesai ✅','ok');
+    }
+    if (S.soalEssay.length > 0) {
+      log('Membuat soal Essay.docx...');
+      S.blobs.essay = await buildSoalEssay(S.info, S.soalEssay);
+      log('Essay.docx selesai ✅','ok');
+    }
+    log('Membuat kunci jawaban.docx...');
+    S.blobs.kunci = await buildKunci(S.info, S.soalPG, S.soalEssay);
+    log('Kunci jawaban.docx selesai ✅','ok');
+
+    setStep('buildDocs','done','Semua dokumen siap didownload!');
+    showResults();
+
+  } catch (err) {
+    console.error(err);
+    log(`ERROR: ${err.message}`,'err');
+    flash(`❌ ${err.message}`, 'error');
+    activeSteps.forEach(s => {
+      const ico = document.getElementById(`ico_${s.id}`);
+      if (ico && ico.classList.contains('running')) setStep(s.id,'err',err.message);
+    });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Generate Soal Sekarang';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  RESULTS
+// ══════════════════════════════════════════════════════════
+function showResults() {
+  const rw = document.getElementById('resultsWrap');
+  rw.classList.add('show');
+  rw.scrollIntoView({ behavior:'smooth' });
+
+  S.sessionId = `${S.info.mapel.replace(/\s+/g,'_')}_${S.info.kelas}_${Date.now()}`;
+
+  // Distribusi PG
+  if (S.soalPG.length > 0) {
+    const dist={A:0,B:0,C:0,D:0};
+    S.soalPG.forEach(s=>{ if(dist[s.jawaban]!==undefined) dist[s.jawaban]++; });
+    const total=S.soalPG.length;
+    const CLR={A:'#34a853',B:'#1a73e8',C:'#f9ab00',D:'#ea4335'};
+    document.getElementById('distDisplay').innerHTML = `
+      <div style="font-weight:700;font-size:0.88rem;margin-bottom:6px">📊 Distribusi Jawaban PG (${total} soal):</div>
+      <div class="dist-bar">
+        ${Object.entries(dist).map(([h,n])=>`<div class="dist-seg" style="width:${(n/total*100).toFixed(1)}%;background:${CLR[h]}">${h}:${n}</div>`).join('')}
+      </div>
+      <div class="dist-legend">
+        ${Object.entries(dist).map(([h,n])=>`<span><b style="color:${CLR[h]}">${h}</b>: ${n} (${(n/total*100).toFixed(0)}%)</span>`).join('')}
+      </div>`;
+  } else {
+    document.getElementById('distDisplay').innerHTML = '';
+  }
+
+  if (S.blobs.pg)    { document.getElementById('dlPG').disabled    = false; }
+  if (S.blobs.essay) { document.getElementById('dlEssay').disabled = false; }
+  if (S.blobs.kunci) { document.getElementById('dlKunci').disabled = false; }
+}
+
+function dlFile(type) {
+  const blob = S.blobs[type];
+  if (!blob) return;
+  const names = {
+    pg:    `soal_${S.info.mapel}_${S.info.kelas}_${S.sessionId}.docx`,
+    essay: `essay_${S.info.mapel}_${S.info.kelas}_${S.sessionId}.docx`,
+    kunci: `kunci_${S.info.mapel}_${S.info.kelas}_${S.sessionId}.docx`,
+  };
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = names[type]; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function resetAll() {
+  S.kkFile=null; S.matFile=null; S.kkContent=null; S.matContent=null;
+  S.soalPG=[]; S.soalEssay=[]; S.blobs={}; S.sessionId='';
+  document.getElementById('fileKisiKisi').value = '';
+  document.getElementById('fileMateri').value   = '';
+  document.getElementById('nameKisiKisi').textContent = 'Belum ada file dipilih';
+  document.getElementById('nameMateri').textContent   = 'Belum ada file dipilih';
+  document.getElementById('upKisiKisi').classList.remove('has-file');
+  document.getElementById('upMateri').classList.remove('has-file');
+  document.getElementById('progWrap').classList.remove('show');
+  document.getElementById('resultsWrap').classList.remove('show');
+  document.getElementById('dlPG').disabled    = true;
+  document.getElementById('dlEssay').disabled = true;
+  document.getElementById('dlKunci').disabled = true;
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+</script>
+</body>
+</html>
