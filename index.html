@@ -589,19 +589,23 @@ function stripJSON(t) {
 async function aiAnalyzeKisiKisi(fc, info) {
   const prompt = `Analisis kisi-kisi ujian berikut untuk ${info.mapel} Kelas ${info.kelas}.
 Kembalikan HANYA JSON valid (tanpa markdown, tanpa teks lain):
-{"namaUjian":"string","mapel":"string","kelas":"string","indikator":[{"no":1,"materi":"nama topik","kompetensiDasar":"KD","indikatorSoal":"deskripsi indikator","level":"C2","jumlahSoal":3,"nomorSoal":"1-3"}]}`;
-  const text = await claude('Kamu adalah asisten guru ahli kisi-kisi ujian Indonesia. Kembalikan HANYA JSON valid tanpa markdown.', buildContent(fc, prompt));
+{"namaUjian":"string","mapel":"string","kelas":"string","indikator":[{"no":1,"materi":"nama topik","kompetensiDasar":"KD","indikatorSoal":"deskripsi indikator pencapaian kompetensi","level":"C2","kategoriKognitif":"LOTS","katakunciMateri":["kata kunci 1","kata kunci 2","kata kunci 3"],"jumlahSoal":3,"nomorSoal":"1-3"}]}
+
+Aturan: "kategoriKognitif" = "LOTS" untuk C1-C2, "MOTS" untuk C3-C4, "HOTS" untuk C5-C6. "katakunciMateri" = 3-5 konsep kunci indikator tersebut.`;
+  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional yang berpengalaman menganalisis kisi-kisi ujian Indonesia. Kembalikan HANYA JSON valid tanpa markdown.', buildContent(fc, prompt));
   return JSON.parse(stripJSON(text));
 }
 
 async function aiAnalyzeMateri(fc, indikator, info) {
-  const list = indikator.map(i => `${i.no}. [${i.materi}] ${i.indikatorSoal} (Level ${i.level})`).join('\n');
-  const prompt = `Buat ringkasan konten relevan dari materi berikut untuk setiap indikator:\n\nINDIKATOR:\n${list}\n\nKembalikan HANYA JSON:\n{"ringkasanPerIndikator":{"1":"ringkasan indikator 1","2":"ringkasan indikator 2"}}`;
+  const list = indikator.map(i =>
+    `${i.no}. [${i.materi}] ${i.indikatorSoal} (Level ${i.level} — ${i.kategoriKognitif||'MOTS'})\n   Kata kunci: ${(i.katakunciMateri||[]).join(', ')}`
+  ).join('\n');
+  const prompt = `Kamu adalah Ahli Kurikulum yang menganalisis buku teks untuk pembuatan soal ujian.\n\n⚠️ PERINTAH: Gunakan HANYA konten dari buku/materi yang diberikan. DILARANG menggunakan pengetahuan umum.\n\nINDIKATOR:\n${list}\n\nUntuk setiap indikator ekstrak dari buku: ringkasan, fakta spesifik (min 3), stimulus HOTS (kutipan/tabel untuk soal analisis), batasan istilah teknis.\n\nKembalikan HANYA JSON:\n{"ringkasanPerIndikator":{"1":{"ringkasan":"konten dari buku","faktaSpesifik":["fakta1","fakta2","fakta3"],"stimulusHOTS":"kutipan/tabel dari buku untuk stimulus soal HOTS","batasanIstilah":["istilah1","istilah2"]}}}`;
   const content = fc.type === 'text'
-    ? `${prompt}\n\nMATERI:\n${fc.content.slice(0, 12000)}`
+    ? `${prompt}\n\nMATERI BUKU:\n${fc.content.slice(0, 12000)}`
     : buildContent(fc, prompt);
   try {
-    const text = await claude('Kamu adalah asisten guru ahli analisis materi Indonesia. Kembalikan HANYA JSON valid.', content);
+    const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional. Gunakan HANYA konten dari buku yang diberikan. Kembalikan HANYA JSON valid.', content);
     return JSON.parse(stripJSON(text));
   } catch { return { ringkasanPerIndikator: {} }; }
 }
@@ -609,54 +613,86 @@ async function aiAnalyzeMateri(fc, indikator, info) {
 async function aiGenPGBatch({ info, indikator, ringkasan, start, end, prev, islami }) {
   const n = end - start + 1;
   const ilist = indikator.map(i => {
-    const r = ringkasan?.ringkasanPerIndikator?.[i.no] || '';
-    return `Indikator ${i.no}: [${i.materi}] ${i.indikatorSoal} — Level:${i.level}${r?`\n   Konten: ${r.slice(0,220)}`:''}`;
+    const r = ringkasan?.ringkasanPerIndikator?.[i.no];
+    const rs = typeof r === 'string' ? r : r?.ringkasan || '';
+    const fakta = r?.faktaSpesifik || [];
+    const stimulus = r?.stimulusHOTS || '';
+    const kat = i.kategoriKognitif || (i.level<='C2'?'LOTS':i.level<='C4'?'MOTS':'HOTS');
+    return `Indikator ${i.no}: [${i.materi}] — Level ${i.level} (${kat})\n  Indikator Soal: ${i.indikatorSoal}\n  Kata Kunci: ${(i.katakunciMateri||[]).join(', ')}\n  Konten Buku: ${rs.slice(0,300)}\n  Fakta Spesifik: ${fakta.slice(0,3).join(' | ')}\n  Stimulus HOTS: ${stimulus.slice(0,250)}`;
   }).join('\n\n');
   const hitung = {A:0,B:0,C:0,D:0};
   prev.forEach(s => { if(hitung[s.jawaban]!==undefined) hitung[s.jawaban]++; });
+  const topikPrev = prev.slice(-10).map(s=>`${s.indikator}:${s.materi}`).join(', ');
   const islamiNote = islami ? 'Gunakan nama tokoh Islami (Ahmad, Fatimah, Malik, Aisyah) dan konteks keislaman.' : '';
   const catatan = info.catatanTambahan ? `Catatan guru: ${info.catatanTambahan}` : '';
 
-  const prompt = `Guru ${info.mapel} membuat soal ujian berkualitas untuk siswa ${info.kelas} Indonesia.
-UJIAN: ${info.namaUjian} | ${info.mapel} Kelas ${info.kelas}
+  const prompt = `Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional untuk ujian ${info.mapel} Kelas ${info.kelas} Indonesia.
 ${islamiNote}${catatan}
 
-INDIKATOR:
+⚠️ PRINSIP UTAMA: Gunakan HANYA konten dari kisi-kisi dan materi buku yang diberikan.
+
+UJIAN: ${info.namaUjian} | ${info.mapel} Kelas ${info.kelas}
+
+INDIKATOR DAN MATERI BUKU:
 ${ilist}
 
-DISTRIBUSI JAWABAN SAAT INI: A:${hitung.A} B:${hitung.B} C:${hitung.C} D:${hitung.D}
-⚠️ Pastikan distribusi A/B/C/D batch ini MERATA.
+DISTRIBUSI JAWABAN (${prev.length} soal sebelumnya): A:${hitung.A} B:${hitung.B} C:${hitung.C} D:${hitung.D}
+⚠️ Sesuaikan batch ini agar keseluruhan MERATA.
 
-Buat soal PG nomor ${start}–${end} (${n} soal).
-Syarat: 1 jawaban benar, pengecoh plausibel, bahasa jenjang SMP/SMA, level Bloom sesuai indikator.
+TOPIK SUDAH DIGUNAKAN (hindari pengulangan sudut pandang): ${topikPrev||'Belum ada'}
+
+TUGAS: Buat soal PG nomor ${start}–${end} (${n} soal).
+
+=== DISTRIBUSI KOGNITIF ===
+- LOTS (C1-C2): 20% = ${Math.round(n*0.2)} soal — ingat/pahami fakta dari buku
+- MOTS (C3-C4): 50% = ${Math.round(n*0.5)} soal — aplikasi/analisis dari buku
+- HOTS (C5-C6): 30% = ${Math.round(n*0.3)} soal — WAJIB gunakan stimulus (kutipan/tabel dari buku)
+
+=== ATURAN KONSTRUKSI ===
+- Semua pilihan: panjang setara, semua plausibel, TIDAK ada "semua benar/salah"
+- Pengecoh merepresentasikan kesalahan konsep yang umum
+- HOTS: isi field "stimulus" dengan kutipan/tabel dari buku (2-4 kalimat), kosongkan untuk LOTS/MOTS
+- "rasional": jelaskan MENGAPA A benar DAN mengapa B/C/D masing-masing salah
 
 Kembalikan HANYA JSON array:
-[{"no":${start},"indikator":1,"materi":"...","level":"C2","soal":"...","pilihan":["teks A","teks B","teks C","teks D"],"jawaban":"A","pembahasan":"..."}]`;
+[{"no":${start},"indikator":1,"materi":"sub-topik spesifik","level":"C2","kategori":"LOTS","stimulus":"","soal":"...","pilihan":["teks A tanpa prefix","teks B","teks C","teks D"],"jawaban":"A","rasional":"A benar karena [...]. B salah karena [...]. C salah karena [...]. D salah karena [...].","pembahasan":"penjelasan lengkap untuk siswa"}]`;
 
-  const text = await claude('Kamu adalah guru ahli pembuat soal PG Indonesia. Kembalikan HANYA JSON array valid tanpa markdown.', prompt);
+  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid tanpa markdown.', prompt);
   return JSON.parse(stripJSON(text));
 }
 
 async function aiGenEssay({ info, indikator, ringkasan, jumlah, islami }) {
   const ilist = indikator.map(i => {
-    const r = ringkasan?.ringkasanPerIndikator?.[i.no] || '';
-    return `${i.no}. [${i.materi}] ${i.indikatorSoal} — Level:${i.level}${r?`\n   ${r.slice(0,150)}`:''}`;
-  }).join('\n');
+    const r = ringkasan?.ringkasanPerIndikator?.[i.no];
+    const rs = typeof r === 'string' ? r : r?.ringkasan || '';
+    const fakta = r?.faktaSpesifik || [];
+    const stimulus = r?.stimulusHOTS || '';
+    const kat = i.kategoriKognitif || (i.level<='C2'?'LOTS':i.level<='C4'?'MOTS':'HOTS');
+    return `${i.no}. [${i.materi}] ${i.indikatorSoal} — Level ${i.level} (${kat})\n   Konten Buku: ${rs.slice(0,250)}\n   Fakta Spesifik: ${fakta.slice(0,3).join(' | ')}\n   Stimulus Tersedia: ${stimulus.slice(0,200)}`;
+  }).join('\n\n');
   const islamiNote = islami ? 'Gunakan nama tokoh Islami dan konteks keislaman.' : '';
   const catatan = info.catatanTambahan ? `Catatan guru: ${info.catatanTambahan}` : '';
 
-  const prompt = `Guru ${info.mapel} membuat soal essay untuk ${info.namaUjian} Kelas ${info.kelas}.
+  const prompt = `Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional untuk ujian ${info.mapel} Kelas ${info.kelas} Indonesia.
 ${islamiNote}${catatan}
 
-INDIKATOR:
+⚠️ PRINSIP UTAMA: Gunakan HANYA konten dari kisi-kisi dan materi buku yang diberikan.
+
+INDIKATOR DAN MATERI BUKU:
 ${ilist}
 
-Buat ${jumlah} soal essay: kemampuan berpikir tinggi (C4-C6), rubrik jelas, total skor=100.
+TUGAS: Buat ${jumlah} soal essay untuk ${info.namaUjian}.
+
+Setiap soal WAJIB memiliki:
+- "stimulus": paragraf/kasus/data dari buku (2-5 kalimat) sebagai konteks — WAJIB ADA
+- "soal": pertanyaan mengacu stimulus, mendorong analisis/evaluasi/sintesis (minimal C4)
+- "rubrik": minimal 3 kriteria penilaian objektif dan terukur
+- Total skor semua soal = 100
 
 Kembalikan HANYA JSON array:
-[{"no":1,"tipe":"essay","indikator":1,"materi":"...","level":"C4","soal":"...","petunjuk":"...","skor":20,"kunci":"...","rubrik":[{"kriteria":"...","skor":5}]}]`;
+[{"no":1,"tipe":"essay","indikator":1,"materi":"sub-topik spesifik","level":"C5","kategori":"HOTS","stimulus":"paragraf/wacana/data dari buku (WAJIB ADA)","soal":"pertanyaan yang mengacu stimulus","petunjuk":"instruksi jelas untuk siswa","skor":20,"kunci":"kunci jawaban lengkap ideal","rubrik":[{"kriteria":"kriteria spesifik 1","skor":8},{"kriteria":"kriteria spesifik 2","skor":7},{"kriteria":"kriteria kedalaman analisis","skor":5}]}]`;
 
-  const text = await claude('Kamu adalah guru ahli pembuat soal essay Indonesia. Kembalikan HANYA JSON array valid.', prompt);
+  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid.', prompt);
   return JSON.parse(stripJSON(text));
 }
 
@@ -789,12 +825,33 @@ function buatHeader(INFO) {
   ];
 }
 
+function renderStimulus(teks) {
+  const {Paragraph,TextRun,Table,TableRow,TableCell,BorderStyle,WidthType,ShadingType}=D();
+  const bS={style:BorderStyle.SINGLE,size:4,color:'4472C4'};
+  const tw=DC.PW-DC.MRG*2;
+  return new Table({width:{size:tw,type:WidthType.DXA},rows:[new TableRow({children:[
+    new TableCell({
+      borders:{top:bS,bottom:bS,left:bS,right:bS},
+      shading:{fill:'EBF3FB',type:ShadingType.CLEAR},
+      margins:{top:80,bottom:80,left:120,right:120},
+      children:[new Paragraph({spacing:{before:0,after:0,line:252},children:[
+        new TextRun({text:teks,font:DC.FONT,size:DC.FSS,italics:true,color:'1F3864'})
+      ]})]
+    })
+  ]})]});
+}
+
 function renderPG(s) {
   const {Paragraph,TextRun}=D();
-  const items=[new Paragraph({spacing:{before:60,after:20,line:264},children:[
+  const items=[];
+  if(s.stimulus && s.stimulus.trim()) {
+    items.push(renderStimulus(s.stimulus.trim()));
+    items.push(new Paragraph({spacing:{before:20,after:0},children:[]}));
+  }
+  items.push(new Paragraph({spacing:{before:60,after:20,line:264},children:[
     new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
     new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
-  ]})];
+  ]}));
   s.pilihan.forEach((opt,i)=>{
     const teks=opt.startsWith(`${DC.LABELS[i]}.`)?opt.slice(2).trim():opt;
     items.push(new Paragraph({spacing:{before:0,after:0,line:252},indent:{left:220},children:[
@@ -844,15 +901,21 @@ async function buildSoalEssay(info, soalEssay) {
   const garisJwb=skor=>Array.from({length:Math.max(3,Math.floor(skor/5)+2)},()=>
     new Paragraph({spacing:{before:0,after:160},border:{bottom:{style:BorderStyle.SINGLE,size:2,color:'AAAAAA',space:1}},children:[new TextRun({text:'',font:DC.FONT,size:DC.FS})]})
   );
-  const items=soalEssay.flatMap(s=>[
-    new Paragraph({spacing:{before:120,after:20,line:276},children:[
+  const items=soalEssay.flatMap(s=>{
+    const parts=[];
+    if(s.stimulus && s.stimulus.trim()) {
+      parts.push(renderStimulus(s.stimulus.trim()));
+      parts.push(new Paragraph({spacing:{before:20,after:0},children:[]}));
+    }
+    parts.push(new Paragraph({spacing:{before:120,after:20,line:276},children:[
       new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
       new TextRun({text:`(Skor: ${s.skor}) `,font:DC.FONT,size:DC.FSS,italics:true}),
       new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
-    ]}),
-    ...(s.petunjuk?[new Paragraph({spacing:{before:0,after:40},indent:{left:220},children:[new TextRun({text:`Petunjuk: ${s.petunjuk}`,font:DC.FONT,size:DC.FSS,italics:true,color:'555555'})]})]:[]),
-    ...garisJwb(s.skor),
-  ]);
+    ]}));
+    if(s.petunjuk) parts.push(new Paragraph({spacing:{before:0,after:40},indent:{left:220},children:[new TextRun({text:`Petunjuk: ${s.petunjuk}`,font:DC.FONT,size:DC.FSS,italics:true,color:'555555'})]}));
+    parts.push(...garisJwb(s.skor));
+    return parts;
+  });
   const footer=new Footer({children:[new Paragraph({alignment:AlignmentType.CENTER,children:[
     new TextRun({text:`${info.mapel}  |  Kelas ${info.kelas}  |  Soal Essay  |  Halaman `,font:DC.FONT,size:18}),
     new TextRun({children:[PageNumber.CURRENT],font:DC.FONT,size:18}),
