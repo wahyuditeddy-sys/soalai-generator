@@ -154,13 +154,30 @@
     .mini-form { background: #f8f9fa; border-radius: 10px; padding: 16px; margin-top: 10px; border: 1px solid var(--border); }
     .checkbox-label { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; font-weight: 500; color: var(--text); cursor: pointer; }
     .checkbox-label input { width: auto; cursor: pointer; }
+
+    /* ── Provider Cards ── */
+    .provider-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 6px; }
+    @media(max-width:580px){ .provider-grid { grid-template-columns: repeat(3,1fr); } }
+    .prov-card {
+      border: 2px solid var(--border); border-radius: 10px; padding: 10px 6px;
+      text-align: center; cursor: pointer; transition: all 0.18s; background: #fafbfc;
+    }
+    .prov-card:hover { border-color: var(--primary); background: rgba(26,115,232,0.04); }
+    .prov-card.active { border-color: var(--primary); background: rgba(26,115,232,0.08); }
+    .prov-icon { font-size: 1.5rem; margin-bottom: 3px; }
+    .prov-name { font-size: 0.75rem; font-weight: 700; color: var(--text); }
+    .prov-sub  { font-size: 0.66rem; color: var(--text-2); margin-top: 1px; }
+    .prov-badge { font-size: 0.6rem; background: #e8f5e9; color: #2e7d32; border-radius: 4px; padding: 1px 5px; margin-top: 3px; display: inline-block; }
+    .model-input-row { display: flex; gap: 8px; }
+    .model-input-row select { flex: 1; }
+    .model-custom-inp { flex: 1; display: none; }
   </style>
 </head>
 <body>
 
 <!-- ═══════════════════════════════════════════════════════ HEADER -->
 <div class="header">
-  <h1>📚 SoalAI Generator <span class="badge">v1.0</span></h1>
+  <h1>📚 SoalAI Generator <span class="badge">v2.0</span></h1>
   <button class="btn-settings" onclick="toggleSettings()">⚙️ Pengaturan API</button>
 </div>
 
@@ -169,19 +186,66 @@
   <!-- ══ SETTINGS (collapsible) ══════════════════════════════════ -->
   <div class="card" id="settingsCard" style="display:none">
     <div class="card-title">⚙️ Pengaturan API</div>
+
+    <!-- Provider Cards -->
     <div class="form-group">
-      <label>Anthropic API Key</label>
+      <label>Provider AI</label>
+      <div class="provider-grid" id="providerGrid">
+        <div class="prov-card active" data-p="anthropic" onclick="selectProvider('anthropic')">
+          <div class="prov-icon">🤖</div>
+          <div class="prov-name">Anthropic</div>
+          <div class="prov-sub">Claude</div>
+          <div class="prov-badge">PDF ✓</div>
+        </div>
+        <div class="prov-card" data-p="openai" onclick="selectProvider('openai')">
+          <div class="prov-icon">✨</div>
+          <div class="prov-name">OpenAI</div>
+          <div class="prov-sub">ChatGPT</div>
+        </div>
+        <div class="prov-card" data-p="openrouter" onclick="selectProvider('openrouter')">
+          <div class="prov-icon">🔀</div>
+          <div class="prov-name">OpenRouter</div>
+          <div class="prov-sub">200+ Model</div>
+        </div>
+        <div class="prov-card" data-p="gemini" onclick="selectProvider('gemini')">
+          <div class="prov-icon">💎</div>
+          <div class="prov-name">Google</div>
+          <div class="prov-sub">Gemini</div>
+          <div class="prov-badge">PDF ✓</div>
+        </div>
+        <div class="prov-card" data-p="custom" onclick="selectProvider('custom')">
+          <div class="prov-icon">⚙️</div>
+          <div class="prov-name">Custom</div>
+          <div class="prov-sub">OpenAI-API</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Base URL — tampil untuk OpenRouter & Custom -->
+    <div class="form-group" id="baseUrlGroup" style="display:none">
+      <label id="baseUrlLabel">Base URL</label>
+      <input type="text" id="baseUrl" placeholder="https://openrouter.ai/api/v1"
+             oninput="saveConf('baseUrl', this.value)" />
+      <div class="hint" id="baseUrlHint">URL endpoint OpenAI-compatible. Kosongkan untuk default provider.</div>
+    </div>
+
+    <!-- API Key -->
+    <div class="form-group">
+      <label id="apiKeyLabel">API Key</label>
       <input type="password" id="apiKey" placeholder="sk-ant-api03-xxxxxxxxxx"
              oninput="saveConf('apiKey', this.value)" />
-      <div class="hint">🔒 Tersimpan di browser (localStorage). Hanya dikirim ke api.anthropic.com</div>
+      <div class="hint" id="apiKeyHint">🔒 Tersimpan di browser (localStorage). Hanya dikirim ke api.anthropic.com</div>
     </div>
+
+    <!-- Model -->
     <div class="form-group">
       <label>Model AI</label>
-      <select id="modelSel" onchange="saveConf('model', this.value)">
-        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — Rekomendasi (cepat + akurat)</option>
-        <option value="claude-opus-4-7">Claude Opus 4.7 — Paling cerdas (lebih lambat)</option>
-        <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — Paling cepat & hemat</option>
-      </select>
+      <div class="model-input-row">
+        <select id="modelSel" onchange="onModelSelChange(this.value)"></select>
+        <input type="text" id="modelCustom" class="model-custom-inp" placeholder="contoh: openai/gpt-4o"
+               oninput="saveConf('model', this.value)" />
+      </div>
+      <div class="hint" id="modelHint"></div>
     </div>
   </div>
 
@@ -393,24 +457,95 @@
 // ══════════════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════════════
+//  PROVIDER CONFIG
+// ══════════════════════════════════════════════════════════
+const PROVIDERS = {
+  anthropic: {
+    label: 'Anthropic (Claude)',
+    keyPlaceholder: 'sk-ant-api03-xxxxxxxxxx',
+    keyHint: '🔒 Tersimpan di browser. Hanya dikirim ke api.anthropic.com — <a href="https://console.anthropic.com" target="_blank">Dapatkan Key</a>',
+    supportsFile: ['pdf','image','text'],
+    showBaseUrl: false,
+    models: [
+      { id:'claude-sonnet-4-6',           label:'Claude Sonnet 4.6 — Rekomendasi (cepat + akurat)' },
+      { id:'claude-opus-4-5-20251001',     label:'Claude Opus 4.5 — Kualitas tertinggi' },
+      { id:'claude-haiku-4-5-20251001',    label:'Claude Haiku 4.5 — Paling hemat & cepat' },
+    ]
+  },
+  openai: {
+    label: 'OpenAI (ChatGPT)',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
+    keyHint: '🔒 Hanya dikirim ke api.openai.com — <a href="https://platform.openai.com/api-keys" target="_blank">Dapatkan Key</a>',
+    supportsFile: ['image','text'],
+    showBaseUrl: false,
+    models: [
+      { id:'gpt-4o',       label:'GPT-4o — Rekomendasi' },
+      { id:'gpt-4o-mini',  label:'GPT-4o Mini — Hemat' },
+      { id:'gpt-4-turbo',  label:'GPT-4 Turbo' },
+      { id:'o1-mini',      label:'o1-mini — Reasoning' },
+      { id:'o3-mini',      label:'o3-mini — Advanced Reasoning' },
+    ]
+  },
+  openrouter: {
+    label: 'OpenRouter (200+ Model)',
+    keyPlaceholder: 'sk-or-v1-xxxxxxxxxxxxxxxx',
+    keyHint: '🔒 Hanya dikirim ke openrouter.ai — <a href="https://openrouter.ai/keys" target="_blank">Dapatkan Key</a>',
+    supportsFile: ['image','text'],
+    showBaseUrl: false,
+    models: [
+      { id:'anthropic/claude-sonnet-4-5',         label:'Claude Sonnet 4.5 (via OpenRouter)' },
+      { id:'openai/gpt-4o',                        label:'GPT-4o (via OpenRouter)' },
+      { id:'google/gemini-2.0-flash',              label:'Gemini 2.0 Flash — Cepat & murah' },
+      { id:'google/gemini-2.5-pro',                label:'Gemini 2.5 Pro — Paling canggih' },
+      { id:'deepseek/deepseek-r1',                 label:'DeepSeek R1 — Reasoning' },
+      { id:'deepseek/deepseek-chat',               label:'DeepSeek V3 — Hemat' },
+      { id:'meta-llama/llama-3.3-70b-instruct',   label:'Llama 3.3 70B' },
+      { id:'qwen/qwq-32b',                         label:'QwQ 32B — Reasoning' },
+      { id:'mistralai/mistral-large',              label:'Mistral Large' },
+      { id:'__custom__',                           label:'— Ketik model ID sendiri —' },
+    ]
+  },
+  gemini: {
+    label: 'Google Gemini',
+    keyPlaceholder: 'AIzaSyxxxxxxxxxxxxxxxxxxxxxxxx',
+    keyHint: '🔒 Hanya dikirim ke generativelanguage.googleapis.com — <a href="https://aistudio.google.com/apikey" target="_blank">Dapatkan Key</a>',
+    supportsFile: ['pdf','image','text'],
+    showBaseUrl: false,
+    models: [
+      { id:'gemini-2.0-flash',       label:'Gemini 2.0 Flash — Rekomendasi' },
+      { id:'gemini-2.5-pro',         label:'Gemini 2.5 Pro — Paling canggih' },
+      { id:'gemini-1.5-pro',         label:'Gemini 1.5 Pro' },
+      { id:'gemini-1.5-flash',       label:'Gemini 1.5 Flash — Hemat' },
+    ]
+  },
+  custom: {
+    label: 'Custom (OpenAI-compatible)',
+    keyPlaceholder: 'API Key provider Anda',
+    keyHint: '🔒 Tersimpan di browser. Dikirim ke Base URL yang Anda masukkan.',
+    supportsFile: ['image','text'],
+    showBaseUrl: true,
+    models: [
+      { id:'__custom__', label:'— Ketik model ID di bawah —' },
+    ]
+  },
+};
+
+// ══════════════════════════════════════════════════════════
 const DEFAULT_SCHOOLS = [
   { id:1, nama:"SMP Muhammadiyah 22 Setiabudi Pamulang", konteksIslami:true }
 ];
 
 const S = {
-  apiKey:  localStorage.getItem('sai_key')   || '',
-  model:   localStorage.getItem('sai_model') || 'claude-sonnet-4-6',
-  schools: JSON.parse(localStorage.getItem('sai_schools') || JSON.stringify(DEFAULT_SCHOOLS)),
-  jenis:   'pg',
-  kkFile:  null,  // kisi-kisi File object
-  matFile: null,  // materi File object
-  kkContent:  null,
-  matContent: null,
-  soalPG:    [],
-  soalEssay: [],
-  blobs:     {},  // { pg, essay, kunci }
-  info:      {},
-  sessionId: '',
+  provider: localStorage.getItem('sai_provider') || 'anthropic',
+  apiKey:   localStorage.getItem('sai_key')      || '',
+  model:    localStorage.getItem('sai_model')    || 'claude-sonnet-4-6',
+  baseUrl:  localStorage.getItem('sai_baseurl')  || '',
+  schools:  JSON.parse(localStorage.getItem('sai_schools') || JSON.stringify(DEFAULT_SCHOOLS)),
+  jenis:    'pg',
+  kkFile:  null, matFile: null,
+  kkContent: null, matContent: null,
+  soalPG: [], soalEssay: [],
+  blobs: {}, info: {}, sessionId: '',
 };
 
 let activeSteps = [];
@@ -419,22 +554,84 @@ let activeSteps = [];
 //  INIT
 // ══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('apiKey').value  = S.apiKey;
-  document.getElementById('modelSel').value = S.model;
+  selectProvider(S.provider, true); // init UI tanpa save ulang
+  document.getElementById('apiKey').value = S.apiKey;
+  if (S.baseUrl) document.getElementById('baseUrl').value = S.baseUrl;
   renderSchools();
 });
 
 // ══════════════════════════════════════════════════════════
-//  SETTINGS
+//  SETTINGS — PROVIDER
 // ══════════════════════════════════════════════════════════
 function toggleSettings() {
   const c = document.getElementById('settingsCard');
   c.style.display = c.style.display === 'none' ? 'block' : 'none';
 }
 
+function selectProvider(p, initOnly = false) {
+  S.provider = p;
+  if (!initOnly) localStorage.setItem('sai_provider', p);
+
+  // Update card highlight
+  document.querySelectorAll('.prov-card').forEach(el => {
+    el.classList.toggle('active', el.dataset.p === p);
+  });
+
+  const cfg = PROVIDERS[p] || PROVIDERS.anthropic;
+
+  // API Key label & hint
+  document.getElementById('apiKeyLabel').textContent = cfg.label + ' — API Key';
+  document.getElementById('apiKey').placeholder      = cfg.keyPlaceholder;
+  document.getElementById('apiKeyHint').innerHTML    = cfg.keyHint;
+
+  // Base URL visibility
+  const bg = document.getElementById('baseUrlGroup');
+  bg.style.display = cfg.showBaseUrl ? 'block' : 'none';
+  if (p === 'openrouter') {
+    bg.style.display = 'block';
+    document.getElementById('baseUrlLabel').textContent = 'Base URL (opsional)';
+    document.getElementById('baseUrl').placeholder = 'https://openrouter.ai/api/v1';
+    document.getElementById('baseUrlHint').textContent = 'Kosongkan untuk default openrouter.ai';
+  } else if (p === 'custom') {
+    document.getElementById('baseUrlLabel').textContent = 'Base URL *';
+    document.getElementById('baseUrl').placeholder = 'http://localhost:11434/v1  atau  https://api.provider.com/v1';
+    document.getElementById('baseUrlHint').textContent = 'URL endpoint yang kompatibel OpenAI (Ollama, LM Studio, dll.)';
+  }
+
+  // Model list
+  const sel = document.getElementById('modelSel');
+  sel.innerHTML = cfg.models.map(m =>
+    `<option value="${m.id}">${m.label}</option>`
+  ).join('');
+
+  // Restore saved model if matches provider
+  const savedModel = localStorage.getItem('sai_model') || '';
+  const hasMatch = cfg.models.some(m => m.id === savedModel);
+  if (hasMatch) { sel.value = savedModel; }
+  else { sel.value = cfg.models[0].id; }
+
+  onModelSelChange(sel.value, true);
+}
+
+function onModelSelChange(val, initOnly = false) {
+  const customInp = document.getElementById('modelCustom');
+  const isCustom  = val === '__custom__';
+  customInp.style.display = isCustom ? 'inline-block' : 'none';
+  if (!isCustom) {
+    S.model = val;
+    if (!initOnly) localStorage.setItem('sai_model', val);
+    const hint = document.getElementById('modelHint');
+    hint.textContent = '';
+  } else {
+    customInp.value = S.model.includes('/') || !S.model.startsWith('claude') ? S.model : '';
+    document.getElementById('modelHint').textContent = 'Masukkan model ID, contoh: openai/gpt-4o atau meta-llama/llama-3.3-70b-instruct';
+  }
+}
+
 function saveConf(k, v) {
-  if (k === 'apiKey') { S.apiKey = v; localStorage.setItem('sai_key', v); }
-  if (k === 'model')  { S.model  = v; localStorage.setItem('sai_model', v); }
+  if (k === 'apiKey')  { S.apiKey  = v; localStorage.setItem('sai_key', v); }
+  if (k === 'model')   { S.model   = v; localStorage.setItem('sai_model', v); }
+  if (k === 'baseUrl') { S.baseUrl = v; localStorage.setItem('sai_baseurl', v); }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -540,24 +737,117 @@ async function readFileContent(file) {
 // ══════════════════════════════════════════════════════════
 //  CLAUDE API
 // ══════════════════════════════════════════════════════════
-async function claude(system, userContent, maxTokens = 8192) {
-  if (!S.apiKey) throw new Error('API Key belum diisi! Buka menu Pengaturan.');
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': S.apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({ model: S.model, max_tokens: maxTokens, system, messages: [{ role:'user', content: userContent }] })
-  });
-  if (!r.ok) {
-    const e = await r.json().catch(() => ({}));
-    throw new Error(`API ${r.status}: ${e.error?.message || r.statusText}`);
+// ══════════════════════════════════════════════════════════
+//  MULTI-PROVIDER AI LAYER
+// ══════════════════════════════════════════════════════════
+
+// Entry point — routing ke provider yang aktif
+async function callAI(system, userContent, maxTokens = 8192) {
+  if (!S.apiKey) throw new Error('API Key belum diisi! Buka ⚙️ Pengaturan API.');
+  switch (S.provider) {
+    case 'gemini':    return callGemini(system, userContent, maxTokens);
+    case 'anthropic': return callAnthropic(system, userContent, maxTokens);
+    default:          return callOpenAICompat(system, userContent, maxTokens);
   }
+}
+
+// Alias lama agar tidak perlu ganti nama di semua tempat
+const claude = callAI;
+
+// ── Anthropic (Claude) ──────────────────────────────────
+async function callAnthropic(system, userContent, maxTokens) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key': S.apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify({ model: S.model, max_tokens: maxTokens, system, messages:[{role:'user', content: userContent}] })
+  });
+  if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(`Anthropic ${r.status}: ${e.error?.message||r.statusText}`); }
   const d = await r.json();
-  return d.content.map(b => b.text || '').join('');
+  return d.content.map(b=>b.text||'').join('');
+}
+
+// ── OpenAI-compatible (OpenAI / OpenRouter / Custom) ────
+async function callOpenAICompat(system, userContent, maxTokens) {
+  const baseUrl =
+    S.provider === 'openai'     ? 'https://api.openai.com/v1' :
+    S.provider === 'openrouter' ? (S.baseUrl || 'https://openrouter.ai/api/v1') :
+    (S.baseUrl || 'https://api.openai.com/v1');  // custom
+
+  // Konversi userContent dari format Anthropic → format OpenAI
+  let oaiContent;
+  if (typeof userContent === 'string') {
+    oaiContent = userContent;
+  } else if (Array.isArray(userContent)) {
+    oaiContent = userContent.map(item => {
+      if (item.type === 'text') return { type:'text', text: item.text };
+      if (item.type === 'image') return { type:'image_url', image_url:{ url:`data:${item.source.media_type};base64,${item.source.data}` } };
+      if (item.type === 'document') return { type:'text', text:'[File PDF tidak didukung langsung oleh provider ini. Silakan ekstrak teks terlebih dahulu, atau gunakan provider Anthropic / Google Gemini.]' };
+      return { type:'text', text: JSON.stringify(item) };
+    });
+  } else {
+    oaiContent = String(userContent);
+  }
+
+  const messages = [
+    { role:'system', content: system },
+    { role:'user',   content: oaiContent }
+  ];
+
+  const headers = { 'Content-Type':'application/json', 'Authorization':`Bearer ${S.apiKey}` };
+  if (S.provider === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://wahyuditeddy-sys.github.io/soalai-generator';
+    headers['X-Title']      = 'SoalAI Generator';
+  }
+
+  const r = await fetch(`${baseUrl}/chat/completions`, {
+    method:'POST', headers,
+    body: JSON.stringify({ model: S.model, max_tokens: maxTokens, messages })
+  });
+  if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(`${S.provider} API ${r.status}: ${e.error?.message||r.statusText}`); }
+  const d = await r.json();
+  return d.choices?.[0]?.message?.content || '';
+}
+
+// ── Google Gemini ────────────────────────────────────────
+async function callGemini(system, userContent, maxTokens) {
+  const model = S.model || 'gemini-2.0-flash';
+
+  // Konversi Anthropic format → Gemini parts
+  let parts = [];
+  if (typeof userContent === 'string') {
+    parts = [{ text: userContent }];
+  } else if (Array.isArray(userContent)) {
+    for (const item of userContent) {
+      if (item.type === 'text')
+        parts.push({ text: item.text });
+      else if (item.type === 'image')
+        parts.push({ inlineData:{ mimeType: item.source.media_type, data: item.source.data } });
+      else if (item.type === 'document')
+        parts.push({ inlineData:{ mimeType:'application/pdf', data: item.source.data } });
+    }
+  } else {
+    parts = [{ text: String(userContent) }];
+  }
+
+  const body = {
+    contents: [{ role:'user', parts }],
+    systemInstruction: { parts:[{ text: system }] },
+    generationConfig:  { maxOutputTokens: maxTokens, temperature: 0.7 }
+  };
+
+  const r = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${S.apiKey}`,
+    { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) }
+  );
+  if (!r.ok) { const e=await r.json().catch(()=>({})); throw new Error(`Gemini ${r.status}: ${e.error?.message||r.statusText}`); }
+  const d = await r.json();
+  if (d.error) throw new Error(`Gemini: ${d.error.message}`);
+  return d.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('') || '';
 }
 
 // Coba parse JSON; jika terpotong, coba recovery dengan menutup array
@@ -584,18 +874,30 @@ function buildContent(fc, prompt) {
   if (!fc || fc.type === 'text') {
     return fc ? `${prompt}\n\nKonten:\n${fc.content}` : prompt;
   }
+
+  const prov = PROVIDERS[S.provider] || PROVIDERS.anthropic;
+
   if (fc.type === 'pdf') {
-    return [
-      { type: 'text', text: prompt },
-      { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fc.data } }
-    ];
+    if (prov.supportsFile.includes('pdf')) {
+      // Anthropic & Gemini: kirim PDF as base64 document
+      return [
+        { type:'text', text: prompt },
+        { type:'document', source:{ type:'base64', media_type:'application/pdf', data: fc.data } }
+      ];
+    } else {
+      // OpenAI / Custom: tidak support PDF native — kirim teks warning
+      return `${prompt}\n\n⚠️ Catatan: File PDF dikirim sebagai referensi saja. Provider "${prov.label}" tidak mendukung baca PDF secara langsung. Gunakan file TXT, atau pilih provider Anthropic / Google Gemini untuk dukungan penuh.`;
+    }
   }
+
   if (fc.type === 'image') {
+    // Semua provider mendukung gambar (dalam format masing-masing — konversi di layer callAI)
     return [
-      { type: 'text', text: prompt },
-      { type: 'image', source: { type: 'base64', media_type: fc.mediaType, data: fc.data } }
+      { type:'text', text: prompt },
+      { type:'image', source:{ type:'base64', media_type: fc.mediaType, data: fc.data } }
     ];
   }
+
   return prompt;
 }
 
