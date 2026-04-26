@@ -540,7 +540,7 @@ async function readFileContent(file) {
 // ══════════════════════════════════════════════════════════
 //  CLAUDE API
 // ══════════════════════════════════════════════════════════
-async function claude(system, userContent) {
+async function claude(system, userContent, maxTokens = 8192) {
   if (!S.apiKey) throw new Error('API Key belum diisi! Buka menu Pengaturan.');
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -550,7 +550,7 @@ async function claude(system, userContent) {
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true'
     },
-    body: JSON.stringify({ model: S.model, max_tokens: 8192, system, messages: [{ role:'user', content: userContent }] })
+    body: JSON.stringify({ model: S.model, max_tokens: maxTokens, system, messages: [{ role:'user', content: userContent }] })
   });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
@@ -558,6 +558,26 @@ async function claude(system, userContent) {
   }
   const d = await r.json();
   return d.content.map(b => b.text || '').join('');
+}
+
+// Coba parse JSON; jika terpotong, coba recovery dengan menutup array
+function safeParseArray(text) {
+  const cleaned = stripJSON(text);
+  try { return JSON.parse(cleaned); } catch (_) {}
+  // Recovery: tutup JSON yang terpotong
+  let fixed = cleaned.trimEnd();
+  // Hapus item terakhir yang tidak lengkap (setelah koma terakhir di level array)
+  const lastGoodComma = fixed.lastIndexOf('},{');
+  if (lastGoodComma !== -1) {
+    fixed = fixed.slice(0, lastGoodComma + 1) + '}]';
+    try { return JSON.parse(fixed); } catch (_) {}
+  }
+  const lastBrace = fixed.lastIndexOf('}');
+  if (lastBrace !== -1) {
+    fixed = fixed.slice(0, lastBrace + 1) + ']';
+    try { return JSON.parse(fixed); } catch (_) {}
+  }
+  throw new Error('Respons AI tidak valid (JSON terpotong). Coba kurangi jumlah soal per batch atau ganti model.');
 }
 
 function buildContent(fc, prompt) {
@@ -612,13 +632,25 @@ async function aiAnalyzeMateri(fc, indikator, info) {
 
 async function aiGenPGBatch({ info, indikator, ringkasan, start, end, prev, islami }) {
   const n = end - start + 1;
-  const ilist = indikator.map(i => {
+
+  // Filter hanya indikator yang relevan untuk range soal ini
+  const indikatorRelevant = indikator.filter(i => {
+    if (!i.nomorSoal) return true;
+    const [lo, hi] = i.nomorSoal.toString().includes('-')
+      ? i.nomorSoal.toString().split('-').map(Number)
+      : [Number(i.nomorSoal), Number(i.nomorSoal)];
+    return !(hi < start || lo > end);
+  });
+  // Fallback: jika tidak ada yang match, ambil semua (max 6 untuk hemat token)
+  const indikatorList = (indikatorRelevant.length > 0 ? indikatorRelevant : indikator).slice(0, 6);
+
+  const ilist = indikatorList.map(i => {
     const r = ringkasan?.ringkasanPerIndikator?.[i.no];
     const rs = typeof r === 'string' ? r : r?.ringkasan || '';
     const fakta = r?.faktaSpesifik || [];
     const stimulus = r?.stimulusHOTS || '';
     const kat = i.kategoriKognitif || (i.level<='C2'?'LOTS':i.level<='C4'?'MOTS':'HOTS');
-    return `Indikator ${i.no}: [${i.materi}] — Level ${i.level} (${kat})\n  Indikator Soal: ${i.indikatorSoal}\n  Kata Kunci: ${(i.katakunciMateri||[]).join(', ')}\n  Konten Buku: ${rs.slice(0,300)}\n  Fakta Spesifik: ${fakta.slice(0,3).join(' | ')}\n  Stimulus HOTS: ${stimulus.slice(0,250)}`;
+    return `Indikator ${i.no}: [${i.materi}] — Level ${i.level} (${kat})\n  Indikator Soal: ${i.indikatorSoal}\n  Kata Kunci: ${(i.katakunciMateri||[]).join(', ')}\n  Konten Buku: ${rs.slice(0,250)}\n  Fakta: ${fakta.slice(0,2).join(' | ')}\n  Stimulus HOTS: ${stimulus.slice(0,200)}`;
   }).join('\n\n');
   const hitung = {A:0,B:0,C:0,D:0};
   prev.forEach(s => { if(hitung[s.jawaban]!==undefined) hitung[s.jawaban]++; });
@@ -657,8 +689,8 @@ TUGAS: Buat soal PG nomor ${start}–${end} (${n} soal).
 Kembalikan HANYA JSON array:
 [{"no":${start},"indikator":1,"materi":"sub-topik spesifik","level":"C2","kategori":"LOTS","stimulus":"","soal":"...","pilihan":["teks A tanpa prefix","teks B","teks C","teks D"],"jawaban":"A","rasional":"A benar karena [...]. B salah karena [...]. C salah karena [...]. D salah karena [...].","pembahasan":"penjelasan lengkap untuk siswa"}]`;
 
-  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid tanpa markdown.', prompt);
-  return JSON.parse(stripJSON(text));
+  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid tanpa markdown.', prompt, 16000);
+  return safeParseArray(text);
 }
 
 async function aiGenEssay({ info, indikator, ringkasan, jumlah, islami }) {
@@ -692,8 +724,8 @@ Setiap soal WAJIB memiliki:
 Kembalikan HANYA JSON array:
 [{"no":1,"tipe":"essay","indikator":1,"materi":"sub-topik spesifik","level":"C5","kategori":"HOTS","stimulus":"paragraf/wacana/data dari buku (WAJIB ADA)","soal":"pertanyaan yang mengacu stimulus","petunjuk":"instruksi jelas untuk siswa","skor":20,"kunci":"kunci jawaban lengkap ideal","rubrik":[{"kriteria":"kriteria spesifik 1","skor":8},{"kriteria":"kriteria spesifik 2","skor":7},{"kriteria":"kriteria kedalaman analisis","skor":5}]}]`;
 
-  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid.', prompt);
-  return JSON.parse(stripJSON(text));
+  const text = await claude('Kamu adalah Ahli Kurikulum dan Penulis Soal Profesional Indonesia. Kembalikan HANYA JSON array valid.', prompt, 12000);
+  return safeParseArray(text);
 }
 
 // ══════════════════════════════════════════════════════════
