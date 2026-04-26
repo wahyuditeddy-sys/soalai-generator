@@ -857,6 +857,28 @@ function buatHeader(INFO) {
   ];
 }
 
+// Konfigurasi numbering otomatis Word untuk satu kolom
+function buatNumConfig(ref, start) {
+  const {AlignmentType}=D();
+  return {
+    reference: ref,
+    levels: [{
+      level: 0,
+      format: 'decimal',   // 1, 2, 3...
+      text: '%1.',          // format tampil: "1.", "2.", dst
+      alignment: AlignmentType.LEFT,
+      start,
+      style: {
+        paragraph: {
+          indent: { left: 440, hanging: 440 }, // hanging: teks soal rata di 440
+          spacing: { before: 120, after: 0, line: 280 }
+        },
+        run: { font: DC.FONT, bold: true, size: DC.FS }
+      }
+    }]
+  };
+}
+
 function renderStimulus(teks) {
   const {Paragraph,TextRun,Table,TableRow,TableCell,BorderStyle,WidthType,ShadingType}=D();
   const bS={style:BorderStyle.SINGLE,size:4,color:'4472C4'};
@@ -873,41 +895,54 @@ function renderStimulus(teks) {
   ]})]});
 }
 
-function renderPG(s) {
+// numRef: "num-kiri" atau "num-kanan" sesuai kolom
+function renderPG(s, numRef) {
   const {Paragraph,TextRun}=D();
   const items=[];
+
+  // Stimulus (HOTS) — kotak biru sebelum soal
   if(s.stimulus && s.stimulus.trim()) {
     items.push(renderStimulus(s.stimulus.trim()));
     items.push(new Paragraph({spacing:{before:20,after:0},children:[]}));
   }
-  items.push(new Paragraph({spacing:{before:60,after:20,line:264},children:[
-    new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
-    new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
-  ]}));
+
+  // Teks soal — gunakan Word auto-numbering (TANPA nomor di teks)
+  items.push(new Paragraph({
+    numbering:{ reference: numRef, level: 0 },
+    children:[new TextRun({text:s.soal,font:DC.FONT,size:DC.FS})]
+  }));
+
+  // Pilihan jawaban — indent 440 agar sejajar teks soal
   s.pilihan.forEach((opt,i)=>{
     const teks=opt.startsWith(`${DC.LABELS[i]}.`)?opt.slice(2).trim():opt;
-    items.push(new Paragraph({spacing:{before:0,after:0,line:252},indent:{left:220},children:[
+    items.push(new Paragraph({spacing:{before:28,after:0,line:252},indent:{left:440},children:[
       new TextRun({text:`${DC.LABELS[i]}.  `,font:DC.FONT,size:DC.FSS,bold:true}),
       new TextRun({text:teks,font:DC.FONT,size:DC.FSS}),
     ]}));
   });
-  items.push(new Paragraph({spacing:{before:0,after:40},children:[]}));
+
+  items.push(new Paragraph({spacing:{before:0,after:60},children:[]}));
   return items;
 }
 
+// Kembalikan { half, table } agar buildSoalPG tahu posisi kolom kanan
 function soal2Kolom(soal) {
   const {Paragraph,Table,TableRow,TableCell,BorderStyle,WidthType}=D();
   const tw=DC.PW-DC.MRG*2, div=160, cw=Math.floor((tw-div)/2);
   const half=Math.ceil(soal.length/2);
-  const left=soal.slice(0,half).flatMap(s=>renderPG(s));
-  const right=soal.slice(half).flatMap(s=>renderPG(s));
+  // Kolom kiri: num-kiri (mulai 1), kolom kanan: num-kanan (mulai half+1)
+  const left=soal.slice(0,half).flatMap(s=>renderPG(s,'num-kiri'));
+  const right=soal.slice(half).flatMap(s=>renderPG(s,'num-kanan'));
   const nb=NB(); const nb1={style:D().BorderStyle.NONE,size:0,color:'FFFFFF'};
   const dv={style:BorderStyle.SINGLE,size:6,color:'888888'};
-  return [new Table({width:{size:tw,type:WidthType.DXA},columnWidths:[cw,div,cw],rows:[new TableRow({children:[
-    new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:80},children:left}),
-    new TableCell({borders:{top:nb1,bottom:nb1,left:dv,right:dv},width:{size:div,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:0},children:[new Paragraph({children:[]})]}),
-    new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:80,right:0},children:right}),
-  ]})]})];
+  return {
+    half,
+    table: new Table({width:{size:tw,type:WidthType.DXA},columnWidths:[cw,div,cw],rows:[new TableRow({children:[
+      new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:80},children:left}),
+      new TableCell({borders:{top:nb1,bottom:nb1,left:dv,right:dv},width:{size:div,type:WidthType.DXA},margins:{top:0,bottom:0,left:0,right:0},children:[new Paragraph({children:[]})]}),
+      new TableCell({borders:nb,width:{size:cw,type:WidthType.DXA},margins:{top:0,bottom:0,left:80,right:0},children:right}),
+    ]})]})
+  };
 }
 
 async function buildSoalPG(info, soalPG) {
@@ -919,11 +954,16 @@ async function buildSoalPG(info, soalPG) {
     new TextRun({text:' dari ',font:DC.FONT,size:18}),
     new TextRun({children:[PageNumber.TOTAL_PAGES],font:DC.FONT,size:18}),
   ]})]});
-  const doc=new Document({sections:[{
-    properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
-    footers:{default:footer},
-    children:[...buatHeader(INFO),...soal2Kolom(soalPG)]
-  }]});
+  const {half, table}=soal2Kolom(soalPG);
+  const doc=new Document({
+    // Penomoran otomatis Word: kiri mulai 1, kanan mulai half+1
+    numbering:{ config:[buatNumConfig('num-kiri',1), buatNumConfig('num-kanan',half+1)] },
+    sections:[{
+      properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
+      footers:{default:footer},
+      children:[...buatHeader(INFO), table]
+    }]
+  });
   return D().Packer.toBlob(doc);
 }
 
@@ -939,12 +979,15 @@ async function buildSoalEssay(info, soalEssay) {
       parts.push(renderStimulus(s.stimulus.trim()));
       parts.push(new Paragraph({spacing:{before:20,after:0},children:[]}));
     }
-    parts.push(new Paragraph({spacing:{before:120,after:20,line:276},children:[
-      new TextRun({text:`${s.no}. `,font:DC.FONT,size:DC.FS,bold:true}),
-      new TextRun({text:`(Skor: ${s.skor}) `,font:DC.FONT,size:DC.FSS,italics:true}),
-      new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
-    ]}));
-    if(s.petunjuk) parts.push(new Paragraph({spacing:{before:0,after:40},indent:{left:220},children:[new TextRun({text:`Petunjuk: ${s.petunjuk}`,font:DC.FONT,size:DC.FSS,italics:true,color:'555555'})]}));
+    // Nomor essay pakai auto-numbering Word (tanpa "1." di teks)
+    parts.push(new Paragraph({
+      numbering:{reference:'num-essay',level:0},
+      children:[
+        new TextRun({text:`(Skor: ${s.skor})  `,font:DC.FONT,size:DC.FSS,italics:true}),
+        new TextRun({text:s.soal,font:DC.FONT,size:DC.FS}),
+      ]
+    }));
+    if(s.petunjuk) parts.push(new Paragraph({spacing:{before:0,after:40},indent:{left:440},children:[new TextRun({text:`Petunjuk: ${s.petunjuk}`,font:DC.FONT,size:DC.FSS,italics:true,color:'555555'})]}));
     parts.push(...garisJwb(s.skor));
     return parts;
   });
@@ -954,10 +997,13 @@ async function buildSoalEssay(info, soalEssay) {
     new TextRun({text:' dari ',font:DC.FONT,size:18}),
     new TextRun({children:[PageNumber.TOTAL_PAGES],font:DC.FONT,size:18}),
   ]})]});
-  const doc=new Document({sections:[{
-    properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
-    footers:{default:footer},children:[...buatHeader(INFO),...items]
-  }]});
+  const doc=new Document({
+    numbering:{ config:[buatNumConfig('num-essay',1)] },
+    sections:[{
+      properties:{page:{size:{width:DC.PW,height:DC.PH},margin:{top:DC.MRG,right:DC.MRG,bottom:DC.MRG+200,left:DC.MRG}}},
+      footers:{default:footer},children:[...buatHeader(INFO),...items]
+    }]
+  });
   return D().Packer.toBlob(doc);
 }
 
